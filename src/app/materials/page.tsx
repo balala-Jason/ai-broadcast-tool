@@ -10,7 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -23,14 +22,15 @@ import {
   Heart, 
   Eye,
   Loader2,
-  Sparkles,
   Database,
   Wand2,
   ExternalLink,
   FileText,
   BarChart3,
-  X,
-  Check
+  TrendingUp,
+  MessageSquare,
+  Lightbulb,
+  Star
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 
@@ -60,6 +60,44 @@ interface SavedMaterial {
   transcription: string | null;
   analysis_result: string | null;
   created_at: string;
+}
+
+// 分析结果类型定义
+interface AnalysisSegment {
+  type: string;
+  content: string;
+  startTime: string;
+  duration: string;
+}
+
+interface AnalysisTechnique {
+  name: string;
+  description: string;
+  examples: string[];
+}
+
+interface GoldenSentence {
+  sentence: string;
+  context: string;
+  effect: string;
+}
+
+interface OverallScore {
+  persuasiveness: number;
+  fluency: number;
+  engagement: number;
+  compliance: number;
+  total: number;
+}
+
+interface AnalysisResult {
+  segments?: AnalysisSegment[];
+  techniques?: AnalysisTechnique[];
+  emotionalStrategies?: Array<{type: string; description: string; effectiveness: number}>;
+  goldenSentences?: GoldenSentence[];
+  overallScore?: OverallScore;
+  summary?: string;
+  suggestions?: string[];
 }
 
 export default function MaterialsPage() {
@@ -134,9 +172,12 @@ export default function MaterialsPage() {
       if (data.success) {
         loadSavedMaterials();
         setActiveTab("library");
+      } else {
+        alert("添加失败：" + (data.error || "未知错误"));
       }
     } catch (error) {
       console.error("Add to library failed:", error);
+      alert("添加失败，请重试");
     }
   }, [loadSavedMaterials]);
 
@@ -152,23 +193,47 @@ export default function MaterialsPage() {
       const data = await response.json();
       if (data.success) {
         loadSavedMaterials();
+        // 更新弹窗中的数据
+        if (detailDialog.material?.id === materialId) {
+          const updatedMaterial = savedMaterials.find(m => m.id === materialId);
+          if (updatedMaterial) {
+            // 重新获取最新数据
+            const res = await fetch("/api/materials");
+            const resData = await res.json();
+            if (resData.success) {
+              const latest = resData.data.find((m: SavedMaterial) => m.id === materialId);
+              if (latest) {
+                setDetailDialog({ open: true, material: latest });
+              }
+            }
+          }
+        }
+      } else {
+        alert("分析失败：" + (data.error || "未知错误"));
       }
     } catch (error) {
       console.error("Analyze failed:", error);
+      alert("分析失败，请重试");
     } finally {
       setIsAnalyzing(null);
     }
-  }, [loadSavedMaterials]);
+  }, [loadSavedMaterials, detailDialog.material, savedMaterials]);
 
   // 删除素材
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm("确定要删除这个素材吗？")) return;
     try {
-      await fetch(`/api/materials?id=${id}`, { method: "DELETE" });
-      loadSavedMaterials();
-      setDetailDialog({ open: false, material: null });
+      const response = await fetch(`/api/materials?id=${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (data.success) {
+        loadSavedMaterials();
+        setDetailDialog({ open: false, material: null });
+      } else {
+        alert("删除失败：" + (data.error || "未知错误"));
+      }
     } catch (error) {
       console.error("Delete failed:", error);
+      alert("删除失败，请重试");
     }
   }, [loadSavedMaterials]);
 
@@ -193,12 +258,32 @@ export default function MaterialsPage() {
   };
 
   // 解析分析结果
-  const parseAnalysis = (result: string | null) => {
+  const parseAnalysis = (result: string | null): AnalysisResult | null => {
     if (!result) return null;
     try {
       return JSON.parse(result);
     } catch {
       return null;
+    }
+  };
+
+  // 获取状态徽章颜色
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case "completed": return "default";
+      case "processing": return "secondary";
+      case "failed": return "destructive";
+      default: return "outline";
+    }
+  };
+
+  // 获取状态文本
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "completed": return "已分析";
+      case "processing": return "分析中";
+      case "failed": return "失败";
+      default: return "待处理";
     }
   };
 
@@ -213,7 +298,9 @@ export default function MaterialsPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="search">视频搜索</TabsTrigger>
-            <TabsTrigger value="library" onClick={loadSavedMaterials}>素材库 ({savedMaterials.length})</TabsTrigger>
+            <TabsTrigger value="library" onClick={loadSavedMaterials}>
+              素材库 ({savedMaterials.length})
+            </TabsTrigger>
           </TabsList>
 
           {/* 视频搜索 */}
@@ -321,17 +408,8 @@ export default function MaterialsPage() {
                             </div>
                           )}
                           <div className="absolute top-2 right-2">
-                            <Badge 
-                              variant={
-                                material.process_status === "completed" ? "default" :
-                                material.process_status === "processing" ? "secondary" :
-                                material.process_status === "failed" ? "destructive" : "outline"
-                              }
-                              className="text-xs"
-                            >
-                              {material.process_status === "completed" ? "已分析" :
-                               material.process_status === "processing" ? "分析中" :
-                               material.process_status === "failed" ? "失败" : "待处理"}
+                            <Badge variant={getStatusVariant(material.process_status)} className="text-xs">
+                              {getStatusText(material.process_status)}
                             </Badge>
                           </div>
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
@@ -347,13 +425,13 @@ export default function MaterialsPage() {
                           <p className="text-xs text-slate-500 mb-2">{material.author}</p>
                           <div className="flex items-center justify-between text-xs text-slate-400">
                             <div className="flex gap-2">
-                              {material.likes && (
+                              {material.likes != null && (
                                 <span className="flex items-center gap-1">
                                   <Heart className="w-3 h-3" />
                                   {formatNumber(material.likes)}
                                 </span>
                               )}
-                              {material.plays && (
+                              {material.plays != null && (
                                 <span className="flex items-center gap-1">
                                   <Eye className="w-3 h-3" />
                                   {formatNumber(material.plays)}
@@ -379,8 +457,8 @@ export default function MaterialsPage() {
           {detailDialog.material && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-xl">{detailDialog.material.title}</DialogTitle>
-                <DialogDescription className="flex items-center gap-4 mt-2">
+                <DialogTitle className="text-xl pr-8">{detailDialog.material.title}</DialogTitle>
+                <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
                   <span>作者：{detailDialog.material.author}</span>
                   {detailDialog.material.source_url && (
                     <a 
@@ -394,7 +472,7 @@ export default function MaterialsPage() {
                       查看原视频
                     </a>
                   )}
-                </DialogDescription>
+                </div>
               </DialogHeader>
 
               <div className="space-y-6 mt-4">
@@ -410,22 +488,22 @@ export default function MaterialsPage() {
                     </div>
                   )}
                   <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-4">
-                      {detailDialog.material.likes && (
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {detailDialog.material.likes != null && (
                         <div className="flex items-center gap-2 text-slate-600">
                           <Heart className="w-5 h-5 text-red-500" />
                           <span className="font-medium">{formatNumber(detailDialog.material.likes)}</span>
                           <span className="text-sm">点赞</span>
                         </div>
                       )}
-                      {detailDialog.material.plays && (
+                      {detailDialog.material.plays != null && (
                         <div className="flex items-center gap-2 text-slate-600">
                           <Eye className="w-5 h-5 text-blue-500" />
                           <span className="font-medium">{formatNumber(detailDialog.material.plays)}</span>
                           <span className="text-sm">播放</span>
                         </div>
                       )}
-                      {detailDialog.material.duration && (
+                      {detailDialog.material.duration != null && (
                         <div className="flex items-center gap-2 text-slate-600">
                           <Clock className="w-5 h-5 text-green-500" />
                           <span className="font-medium">{formatDuration(detailDialog.material.duration)}</span>
@@ -434,13 +512,7 @@ export default function MaterialsPage() {
                     </div>
                     
                     <div className="flex gap-2">
-                      <Badge 
-                        variant={
-                          detailDialog.material.process_status === "completed" ? "default" :
-                          detailDialog.material.process_status === "processing" ? "secondary" :
-                          detailDialog.material.process_status === "failed" ? "destructive" : "outline"
-                        }
-                      >
+                      <Badge variant={getStatusVariant(detailDialog.material.process_status)}>
                         {detailDialog.material.process_status === "completed" ? "✓ 已分析" :
                          detailDialog.material.process_status === "processing" ? "⏳ 分析中" :
                          detailDialog.material.process_status === "failed" ? "✗ 失败" : "○ 待处理"}
@@ -498,49 +570,126 @@ export default function MaterialsPage() {
                         <h4 className="font-semibold text-emerald-900">分析结果</h4>
                       </div>
                       <div className="space-y-4">
-                        {/* 话术技巧 */}
-                        {analysis.techniques && (
+                        {/* 综合评分 */}
+                        {analysis.overallScore && (
+                          <div className="bg-white rounded p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Star className="w-5 h-5 text-yellow-500" />
+                              <h5 className="font-medium">综合评分</h5>
+                              <span className="ml-auto text-2xl font-bold text-emerald-600">
+                                {analysis.overallScore.total}/10
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                              <div className="text-center p-2 bg-slate-50 rounded">
+                                <div className="text-lg font-semibold">{analysis.overallScore.persuasiveness}</div>
+                                <div className="text-slate-500">说服力</div>
+                              </div>
+                              <div className="text-center p-2 bg-slate-50 rounded">
+                                <div className="text-lg font-semibold">{analysis.overallScore.fluency}</div>
+                                <div className="text-slate-500">流畅度</div>
+                              </div>
+                              <div className="text-center p-2 bg-slate-50 rounded">
+                                <div className="text-lg font-semibold">{analysis.overallScore.engagement}</div>
+                                <div className="text-slate-500">互动性</div>
+                              </div>
+                              <div className="text-center p-2 bg-slate-50 rounded">
+                                <div className="text-lg font-semibold">{analysis.overallScore.compliance}</div>
+                                <div className="text-slate-500">合规性</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 话术分段 */}
+                        {analysis.segments && analysis.segments.length > 0 && (
                           <div className="bg-white rounded p-3">
-                            <h5 className="font-medium text-sm mb-2">话术技巧</h5>
-                            <div className="flex flex-wrap gap-2">
-                              {analysis.techniques.map((t: string, i: number) => (
-                                <Badge key={i} variant="secondary">{t}</Badge>
+                            <div className="flex items-center gap-2 mb-3">
+                              <MessageSquare className="w-4 h-4 text-blue-500" />
+                              <h5 className="font-medium text-sm">话术分段</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {analysis.segments.map((seg, i) => (
+                                <div key={i} className="flex items-start gap-3 p-2 bg-slate-50 rounded text-sm">
+                                  <Badge variant="outline" className="flex-shrink-0">{seg.type}</Badge>
+                                  <div className="flex-1">
+                                    <p className="text-slate-700">{seg.content}</p>
+                                    <p className="text-xs text-slate-400 mt-1">{seg.startTime} · {seg.duration}</p>
+                                  </div>
+                                </div>
                               ))}
                             </div>
                           </div>
                         )}
-                        
-                        {/* 卖点提炼 */}
-                        {analysis.sellingPoints && (
+
+                        {/* 话术技巧 */}
+                        {analysis.techniques && analysis.techniques.length > 0 && (
                           <div className="bg-white rounded p-3">
-                            <h5 className="font-medium text-sm mb-2">卖点提炼</h5>
+                            <div className="flex items-center gap-2 mb-3">
+                              <Lightbulb className="w-4 h-4 text-yellow-500" />
+                              <h5 className="font-medium text-sm">话术技巧</h5>
+                            </div>
+                            <div className="space-y-3">
+                              {analysis.techniques.map((tech, i) => (
+                                <div key={i} className="p-3 bg-slate-50 rounded">
+                                  <div className="font-medium text-sm mb-1">{tech.name}</div>
+                                  <div className="text-xs text-slate-500 mb-2">{tech.description}</div>
+                                  {tech.examples && tech.examples.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {tech.examples.map((ex, j) => (
+                                        <Badge key={j} variant="secondary" className="text-xs">"{ex}"</Badge>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 金句提炼 */}
+                        {analysis.goldenSentences && analysis.goldenSentences.length > 0 && (
+                          <div className="bg-white rounded p-3">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Star className="w-4 h-4 text-yellow-500" />
+                              <h5 className="font-medium text-sm">金句提炼</h5>
+                            </div>
+                            <div className="space-y-2">
+                              {analysis.goldenSentences.map((gs, i) => (
+                                <div key={i} className="p-3 bg-gradient-to-r from-yellow-50 to-orange-50 rounded border border-yellow-200">
+                                  <p className="font-medium text-slate-800">"{gs.sentence}"</p>
+                                  <div className="flex gap-3 mt-2 text-xs text-slate-500">
+                                    <span>场景：{gs.context}</span>
+                                    <span>效果：{gs.effect}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 总结 */}
+                        {analysis.summary && (
+                          <div className="bg-white rounded p-3">
+                            <h5 className="font-medium text-sm mb-2">话术总结</h5>
+                            <p className="text-sm text-slate-600">{analysis.summary}</p>
+                          </div>
+                        )}
+
+                        {/* 改进建议 */}
+                        {analysis.suggestions && analysis.suggestions.length > 0 && (
+                          <div className="bg-white rounded p-3">
+                            <div className="flex items-center gap-2 mb-3">
+                              <TrendingUp className="w-4 h-4 text-green-500" />
+                              <h5 className="font-medium text-sm">改进建议</h5>
+                            </div>
                             <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
-                              {analysis.sellingPoints.map((s: string, i: number) => (
+                              {analysis.suggestions.map((s, i) => (
                                 <li key={i}>{s}</li>
                               ))}
                             </ul>
                           </div>
                         )}
-                        
-                        {/* 互动话术 */}
-                        {analysis.interactionScripts && (
-                          <div className="bg-white rounded p-3">
-                            <h5 className="font-medium text-sm mb-2">互动话术示例</h5>
-                            <div className="space-y-2 text-sm text-slate-600">
-                              {analysis.interactionScripts.map((s: string, i: number) => (
-                                <div key={i} className="p-2 bg-slate-50 rounded">"{s}"</div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* 原始JSON */}
-                        <details className="bg-white rounded p-3">
-                          <summary className="cursor-pointer text-sm font-medium">查看完整分析数据</summary>
-                          <pre className="mt-2 text-xs text-slate-600 overflow-x-auto">
-                            {JSON.stringify(analysis, null, 2)}
-                          </pre>
-                        </details>
                       </div>
                     </div>
                   );
