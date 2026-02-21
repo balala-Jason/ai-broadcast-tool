@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     let query = client
       .from("scripts")
-      .select("*, products(name, category), style_templates(name, style_type)", { count: "exact" })
+      .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -32,9 +32,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 单独获取产品和模板信息
+    let enrichedData = data || [];
+    if (data && data.length > 0) {
+      const productIds = [...new Set(data.map(s => s.product_id))];
+      const templateIds = [...new Set(data.map(s => s.style_template_id))];
+      
+      const [productsRes, templatesRes] = await Promise.all([
+        client.from("products").select("id, name, category").in("id", productIds),
+        client.from("style_templates").select("id, name, style_type").in("id", templateIds),
+      ]);
+      
+      const productsMap = new Map((productsRes.data || []).map(p => [p.id, p]));
+      const templatesMap = new Map((templatesRes.data || []).map(t => [t.id, t]));
+      
+      enrichedData = data.map(script => ({
+        ...script,
+        products: productsMap.get(script.product_id) || null,
+        style_templates: templatesMap.get(script.style_template_id) || null,
+      }));
+    }
+
     return NextResponse.json({
       success: true,
-      data: data || [],
+      data: enrichedData,
       total: count || 0,
       page,
       pageSize,

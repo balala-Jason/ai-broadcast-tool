@@ -97,13 +97,19 @@ export const scripts = pgTable(
     targetAudience: varchar("target_audience", { length: 500 }), // 目标人群
     duration: integer("duration"), // 直播时长（分钟）
     promotionRules: text("promotion_rules"), // 促销规则（JSON）
-    // 结构化话术内容
-    opening: text("opening"), // 开场白
-    productIntro: text("product_intro"), // 产品介绍
-    sellingPoints: text("selling_points"), // 卖点话术（JSON数组）
-    promotions: text("promotions"), // 促销话术（JSON数组）
-    closing: text("closing"), // 逼单话术
-    faq: text("faq"), // 常见问题回答（JSON数组）
+    // 抖音实战5段式话术结构（对应核心算法指标）
+    warmUp: text("warm_up"), // 预热环节 - 提升停留时长
+    retention: text("retention"), // 留人环节 - 提升互动率
+    lockCustomer: text("lock_customer"), // 锁客环节 - 提升转化率
+    pushOrder: text("push_order"), // 逼单环节 - 提升GPM
+    atmosphere: text("atmosphere"), // 气氛组 - 整体参与度与氛围
+    // 旧版字段保留以兼容历史数据
+    opening: text("opening"), // 开场白（兼容旧版）
+    productIntro: text("product_intro"), // 产品介绍（兼容旧版）
+    sellingPoints: text("selling_points"), // 卖点话术（JSON数组，兼容旧版）
+    promotions: text("promotions"), // 促销话术（JSON数组，兼容旧版）
+    closing: text("closing"), // 逼单话术（兼容旧版）
+    faq: text("faq"), // 常见问题回答（JSON数组，兼容旧版）
     // 质量评估
     qualityScore: numeric("quality_score", { precision: 3, scale: 2 }), // 质量评分 0-10
     complianceStatus: varchar("compliance_status", { length: 20 }), // 合规状态：pass/warning/fail

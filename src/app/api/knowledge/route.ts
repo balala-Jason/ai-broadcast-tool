@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     let query = client
       .from("knowledge_collections")
-      .select("*, knowledge_documents(count)")
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (collectionType) {
@@ -32,12 +32,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 处理文档计数
-    const processedData = (data || []).map(item => ({
-      ...item,
-      documentCount: item.knowledge_documents?.[0]?.count || 0,
-      knowledge_documents: undefined,
-    }));
+    // 单独获取每个集合的文档计数
+    let processedData = data || [];
+    if (data && data.length > 0) {
+      const collectionIds = data.map(c => c.id);
+      const { data: docCounts } = await client
+        .from("knowledge_documents")
+        .select("collection_id")
+        .in("collection_id", collectionIds)
+        .eq("is_active", true);
+      
+      // 手动计数
+      const countMap = new Map<string, number>();
+      (docCounts || []).forEach(doc => {
+        const current = countMap.get(doc.collection_id) || 0;
+        countMap.set(doc.collection_id, current + 1);
+      });
+      
+      processedData = data.map(item => ({
+        ...item,
+        document_count: countMap.get(item.id) || item.document_count || 0,
+      }));
+    }
 
     return NextResponse.json({
       success: true,

@@ -44,6 +44,11 @@ interface StyleTemplate {
 interface Script {
   id: string;
   title: string;
+  warm_up: string | null;
+  retention: string | null;
+  lock_customer: string | null;
+  push_order: string | null;
+  atmosphere: string | null;
   opening: string | null;
   product_intro: string | null;
   selling_points: string | null;
@@ -56,6 +61,15 @@ interface Script {
   products: { name: string };
   style_templates: { name: string };
 }
+
+// 5段式话术结构定义（对应抖音核心算法指标）
+const SCRIPT_SEGMENTS = [
+  { key: "warmUp", label: "预热环节", target: "停留时长", color: "bg-blue-500", icon: "🎯", desc: "吸引注意力，建立期待感" },
+  { key: "retention", label: "留人环节", target: "互动率", color: "bg-green-500", icon: "💬", desc: "引导互动，提升热度" },
+  { key: "lockCustomer", label: "锁客环节", target: "转化率", color: "bg-purple-500", icon: "🔒", desc: "建立信任，激发购买意愿" },
+  { key: "pushOrder", label: "逼单环节", target: "GPM", color: "bg-orange-500", icon: "⚡", desc: "制造紧迫，促成下单" },
+  { key: "atmosphere", label: "气氛组", target: "参与度", color: "bg-pink-500", icon: "🎉", desc: "营造氛围，维持热度" },
+];
 
 export default function ScriptsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -295,7 +309,7 @@ export default function ScriptsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>生成结果</CardTitle>
-                  <CardDescription>AI生成的话术内容</CardDescription>
+                  <CardDescription>抖音实战5段式话术（对应核心算法指标）</CardDescription>
                 </div>
                 {generatedContent && (
                   <div className="flex gap-2">
@@ -318,6 +332,17 @@ export default function ScriptsPage() {
               </div>
             </CardHeader>
             <CardContent>
+              {/* 5段式指标展示 */}
+              <div className="grid grid-cols-5 gap-2 mb-4">
+                {SCRIPT_SEGMENTS.map((seg) => (
+                  <div key={seg.key} className="text-center p-2 rounded-lg bg-slate-100">
+                    <div className="text-lg">{seg.icon}</div>
+                    <div className="text-xs font-medium mt-1">{seg.label}</div>
+                    <div className="text-xs text-slate-500">{seg.target}</div>
+                  </div>
+                ))}
+              </div>
+              
               <div 
                 ref={outputRef}
                 className="min-h-[400px] max-h-[600px] overflow-y-auto bg-slate-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap"
