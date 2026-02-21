@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
-import { insertVideoMaterialSchema } from "@/storage/database/shared/schema";
-import { z } from "zod";
+
+/**
+ * 视频素材API
+ * 
+ * GET: 获取素材列表
+ * POST: 添加新素材
+ * DELETE: 删除素材
+ */
 
 // 获取视频素材列表
 export async function GET(request: NextRequest) {
@@ -25,6 +31,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
 
     if (error) {
+      console.error("Get materials error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -50,19 +57,37 @@ export async function POST(request: NextRequest) {
     const client = getSupabaseClient();
     const body = await request.json();
 
-    // 验证输入
-    const validatedData = insertVideoMaterialSchema.parse({
-      ...body,
-      processStatus: "pending",
-    });
+    // 直接使用snake_case字段名插入数据库
+    // 前端发送的字段已经是snake_case格式
+    const materialData = {
+      title: body.title,
+      author: body.author || null,
+      duration: body.duration || null,
+      cover_url: body.cover_url || body.coverUrl || null,
+      source_url: body.source_url || body.sourceUrl || null,
+      source_id: body.source_id || body.sourceId || null,
+      source_platform: body.source_platform || body.sourcePlatform || "douyin",
+      likes: body.likes || 0,
+      plays: body.plays || 0,
+      process_status: "pending",
+    };
+
+    // 验证必填字段
+    if (!materialData.title) {
+      return NextResponse.json(
+        { error: "标题不能为空" },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await client
       .from("video_materials")
-      .insert(validatedData)
+      .insert(materialData)
       .select()
       .single();
 
     if (error) {
+      console.error("Insert material error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -71,12 +96,6 @@ export async function POST(request: NextRequest) {
       data,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "数据验证失败", details: error.issues },
-        { status: 400 }
-      );
-    }
     console.error("Create material error:", error);
     return NextResponse.json(
       { error: "添加素材失败" },
@@ -102,6 +121,7 @@ export async function DELETE(request: NextRequest) {
       .eq("id", id);
 
     if (error) {
+      console.error("Delete material error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
