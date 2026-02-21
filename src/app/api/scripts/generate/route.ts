@@ -11,6 +11,7 @@ import {
  * AI话术生成API（流式输出）
  * 
  * 基于产品信息、风格模板和知识库素材，生成完整的直播话术脚本
+ * 每个环节生成5种以上选择，供用户挑选
  */
 
 const SCRIPT_GENERATION_PROMPT = `你是一位专业的农产品直播带货话术撰写专家，精通抖音直播算法机制。请根据以下信息，生成一份符合抖音实战5段式结构的直播话术脚本。
@@ -31,40 +32,86 @@ const SCRIPT_GENERATION_PROMPT = `你是一位专业的农产品直播带货话�
 
 ## 输出要求
 
-请生成抖音实战5段式结构话术，每个环节对应核心算法指标，输出JSON格式：
+请生成抖音实战5段式结构话术，**每个环节必须提供至少5种不同风格/角度的话术选择**，输出JSON格式：
 
 {
   "warmUp": {
     "title": "预热环节",
     "target": "提升停留时长",
-    "script": "预热话术内容（5-10秒）- 吸引注意力，建立期待感，用悬念、福利预告等方式留住观众",
-    "keyPoints": ["关键点1", "关键点2"]
+    "description": "吸引注意力，建立期待感，前3秒决定去留",
+    "options": [
+      {
+        "id": "warm_1",
+        "style": "悬念式",
+        "script": "话术内容...",
+        "tips": "使用技巧说明"
+      },
+      {
+        "id": "warm_2",
+        "style": "福利预告式",
+        "script": "话术内容...",
+        "tips": "使用技巧说明"
+      },
+      // 至少5种选择
+    ]
   },
   "retention": {
     "title": "留人环节", 
     "target": "提升互动率",
-    "script": "留人话术内容（10-15秒）- 引导点赞、评论、关注，制造互动话题，提升直播间热度",
-    "interactionTips": ["互动技巧1", "互动技巧2"]
+    "description": "引导点赞、评论、关注，制造互动话题，提升直播间热度",
+    "options": [
+      {
+        "id": "retain_1",
+        "style": "提问互动式",
+        "script": "话术内容...",
+        "interactionType": "评论互动"
+      },
+      // 至少5种选择
+    ]
   },
   "lockCustomer": {
     "title": "锁客环节",
     "target": "提升转化率", 
-    "script": "锁客话术内容（15-20秒）- 深度介绍产品价值，解决痛点，建立信任，让观众产生购买意愿",
-    "valuePoints": ["价值点1", "价值点2"]
+    "description": "深度介绍产品价值，解决痛点，建立信任，让观众产生购买意愿",
+    "options": [
+      {
+        "id": "lock_1",
+        "style": "故事代入式",
+        "script": "话术内容...",
+        "valuePoint": "核心价值点"
+      },
+      // 至少5种选择
+    ]
   },
   "pushOrder": {
     "title": "逼单环节",
     "target": "提升GPM",
-    "script": "逼单话术内容（10-15秒）- 制造紧迫感，限时优惠，促成立即下单",
-    "urgencyTechniques": ["紧迫技巧1", "紧迫技巧2"]
+    "description": "制造紧迫感，限时优惠，促成立即下单",
+    "options": [
+      {
+        "id": "push_1",
+        "style": "限时秒杀式",
+        "script": "话术内容...",
+        "urgency": "紧迫点"
+      },
+      // 至少5种选择
+    ]
   },
   "atmosphere": {
     "title": "气氛组",
     "target": "整体参与度",
-    "script": "气氛话术内容（穿插使用）- 营造抢购氛围，感谢打赏，引导分享，维持直播间热度",
-    "phrases": ["气氛话术1", "气氛话术2"]
+    "description": "营造抢购氛围，感谢打赏，引导分享，维持直播间热度",
+    "options": [
+      {
+        "id": "atm_1",
+        "style": "感谢打赏式",
+        "script": "话术内容...",
+        "trigger": "使用时机"
+      },
+      // 至少5种选择
+    ]
   },
-  "complianceNotes": ["合规提醒"],
+  "complianceNotes": ["合规提醒1", "合规提醒2"],
   "estimatedDuration": "预估时长",
   "algorithmTips": "算法优化建议"
 }
@@ -76,12 +123,25 @@ const SCRIPT_GENERATION_PROMPT = `你是一位专业的农产品直播带货话�
 4. 逼单环节（GPM）：制造稀缺性、紧迫感，给观众立即行动的理由
 5. 气氛组（参与度）：贯穿全程，感谢打赏、庆祝成交、引导分享，维持热度
 
+## 话术风格参考（每个环节可选）
+- 悬念式：制造好奇心，引发期待
+- 福利预告式：预告优惠，吸引留存
+- 提问互动式：引导评论，提升互动
+- 故事代入式：用故事建立情感连接
+- 对比冲击式：用对比突出价值
+- 数据证明式：用数据增强可信度
+- 限时秒杀式：制造时间紧迫感
+- 库存告急式：制造稀缺感
+- 感谢打赏式：维护粉丝关系
+- 庆祝成交式：营造抢购氛围
+
 ## 注意事项
-1. 话术要自然流畅，符合口语表达习惯
-2. 每个环节的话术要紧凑有力，控制在规定时长内
-3. 促销话术要有紧迫感但不夸大
-4. 必须遵守以下禁用词规则：{{PROHIBITED_WORDS}}
-5. 充分利用参考素材中的优秀话术技巧
+1. 每个环节必须提供至少5种不同风格的话术选择
+2. 每种话术要有明确的风格标签和使用技巧说明
+3. 话术要自然流畅，符合口语表达习惯
+4. 促销话术要有紧迫感但不夸大
+5. 必须遵守以下禁用词规则：{{PROHIBITED_WORDS}}
+6. 充分利用参考素材中的优秀话术技巧
 
 请开始生成话术：`;
 
@@ -178,7 +238,7 @@ export async function POST(request: NextRequest) {
           const messages = [{ role: "user" as const, content: prompt }];
           const llmStream = llmClient.stream(messages, {
             model: "doubao-seed-2-0-pro-260215",
-            temperature: 0.7,
+            temperature: 0.8,
           });
 
           let fullContent = "";
@@ -221,13 +281,6 @@ export async function POST(request: NextRequest) {
             lock_customer: scriptData?.lockCustomer ? JSON.stringify(scriptData.lockCustomer) : null,
             push_order: scriptData?.pushOrder ? JSON.stringify(scriptData.pushOrder) : null,
             atmosphere: scriptData?.atmosphere ? JSON.stringify(scriptData.atmosphere) : null,
-            // 兼容旧版字段
-            opening: scriptData?.warmUp?.script || scriptData?.opening || null,
-            product_intro: scriptData?.lockCustomer?.script || scriptData?.productIntro || null,
-            selling_points: scriptData?.lockCustomer?.valuePoints ? JSON.stringify(scriptData.lockCustomer.valuePoints) : (scriptData?.sellingPoints ? JSON.stringify(scriptData.sellingPoints) : null),
-            promotions: scriptData?.pushOrder?.urgencyTechniques ? JSON.stringify(scriptData.pushOrder.urgencyTechniques) : (scriptData?.promotions ? JSON.stringify(scriptData.promotions) : null),
-            closing: scriptData?.pushOrder?.script || scriptData?.closing || null,
-            faq: scriptData?.faq ? JSON.stringify(scriptData.faq) : null,
             status: "draft",
           };
 
