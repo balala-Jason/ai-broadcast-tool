@@ -14,7 +14,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -64,7 +63,6 @@ export default function ProductsPage() {
     description: "",
   });
 
-  // 加载产品列表
   const loadProducts = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -84,7 +82,6 @@ export default function ProductsPage() {
     loadProducts();
   }, [loadProducts]);
 
-  // 打开新增/编辑对话框
   const handleOpenDialog = (product?: Product) => {
     if (product) {
       setEditingProduct(product);
@@ -116,7 +113,6 @@ export default function ProductsPage() {
     setIsDialogOpen(true);
   };
 
-  // 保存产品
   const handleSave = async () => {
     try {
       const payload = {
@@ -148,7 +144,6 @@ export default function ProductsPage() {
     }
   };
 
-  // 删除产品
   const handleDelete = async (id: string) => {
     if (!confirm("确定要删除这个产品吗？")) return;
     
@@ -166,44 +161,45 @@ export default function ProductsPage() {
 
   return (
     <MainLayout>
-      <div className="p-6">
+      <div className="p-4 md:p-6 pb-20 md:pb-6">
         <PageHeader title="产品管理" description="管理农产品信息，为话术生成提供素材">
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="w-4 h-4 mr-2" />
+          <Button size="sm" onClick={() => handleOpenDialog()} className="h-9">
+            <Plus className="w-4 h-4 mr-1" />
             添加产品
           </Button>
         </PageHeader>
 
-        <Card>
-          <CardContent className="pt-6">
+        <Card className="shadow-sm">
+          <CardContent className="p-4 md:p-6">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
               </div>
             ) : products.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
-                <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>暂无产品，点击上方按钮添加</p>
+              <div className="text-center py-8 md:py-12 text-slate-500">
+                <Package className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-sm">暂无产品，点击上方按钮添加</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                 {products.map((product) => (
-                  <Card key={product.id} className="overflow-hidden">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-lg">{product.name}</CardTitle>
+                  <Card key={product.id} className="overflow-hidden shadow-sm">
+                    <CardHeader className="p-3 md:p-4 pb-2 md:pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-base md:text-lg line-clamp-1">{product.name}</CardTitle>
                           <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="secondary">{product.category}</Badge>
+                            <Badge variant="secondary" className="text-xs">{product.category}</Badge>
                             {product.origin && (
-                              <span className="text-sm text-slate-500">{product.origin}</span>
+                              <span className="text-xs text-slate-500 truncate">{product.origin}</span>
                             )}
                           </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 flex-shrink-0">
                           <Button 
                             size="icon" 
                             variant="ghost"
+                            className="h-8 w-8"
                             onClick={() => handleOpenDialog(product)}
                           >
                             <Pencil className="w-4 h-4" />
@@ -211,6 +207,7 @@ export default function ProductsPage() {
                           <Button 
                             size="icon" 
                             variant="ghost"
+                            className="h-8 w-8"
                             onClick={() => handleDelete(product.id)}
                           >
                             <Trash2 className="w-4 h-4 text-red-500" />
@@ -218,24 +215,29 @@ export default function ProductsPage() {
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="pt-0">
+                    <CardContent className="p-3 md:p-4 pt-0">
                       {product.price && (
-                        <p className="text-2xl font-bold text-emerald-600 mb-2">
+                        <p className="text-xl md:text-2xl font-bold text-emerald-600 mb-2">
                           ¥{product.price}
                         </p>
                       )}
                       {product.specification && (
-                        <p className="text-sm text-slate-500 mb-2">{product.specification}</p>
+                        <p className="text-xs md:text-sm text-slate-500 mb-2 line-clamp-1">{product.specification}</p>
                       )}
                       {product.selling_points && (
                         <div className="mt-2">
                           <p className="text-xs text-slate-400 mb-1">卖点：</p>
                           <div className="flex flex-wrap gap-1">
-                            {JSON.parse(product.selling_points).map((point: string, i: number) => (
+                            {JSON.parse(product.selling_points).slice(0, 3).map((point: string, i: number) => (
                               <Badge key={i} variant="outline" className="text-xs">
                                 {point}
                               </Badge>
                             ))}
+                            {JSON.parse(product.selling_points).length > 3 && (
+                              <Badge variant="outline" className="text-xs text-slate-400">
+                                +{JSON.parse(product.selling_points).length - 3}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       )}
@@ -249,32 +251,33 @@ export default function ProductsPage() {
 
         {/* 新增/编辑对话框 */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[95vw] md:max-w-2xl max-h-[85vh] overflow-y-auto p-4 md:p-6">
             <DialogHeader>
-              <DialogTitle>{editingProduct ? "编辑产品" : "添加产品"}</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-base md:text-lg">{editingProduct ? "编辑产品" : "添加产品"}</DialogTitle>
+              <DialogDescription className="text-xs md:text-sm">
                 填写产品信息，用于生成直播话术
               </DialogDescription>
             </DialogHeader>
             
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">产品名称 *</Label>
+            <div className="grid gap-3 md:gap-4 py-3 md:py-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="space-y-1.5 md:space-y-2">
+                  <Label htmlFor="name" className="text-sm">产品名称 *</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="如：山东烟台红富士苹果"
+                    className="h-10"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">品类 *</Label>
+                <div className="space-y-1.5 md:space-y-2">
+                  <Label htmlFor="category" className="text-sm">品类 *</Label>
                   <Select 
                     value={formData.category} 
                     onValueChange={(value) => setFormData({ ...formData, category: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-10">
                       <SelectValue placeholder="选择品类" />
                     </SelectTrigger>
                     <SelectContent>
@@ -286,87 +289,94 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="origin">产地</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="space-y-1.5 md:space-y-2">
+                  <Label htmlFor="origin" className="text-sm">产地</Label>
                   <Input
                     id="origin"
                     value={formData.origin}
                     onChange={(e) => setFormData({ ...formData, origin: e.target.value })}
                     placeholder="如：山东烟台"
+                    className="h-10"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="price">价格</Label>
+                <div className="space-y-1.5 md:space-y-2">
+                  <Label htmlFor="price" className="text-sm">价格</Label>
                   <Input
                     id="price"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     placeholder="如：39.9"
+                    className="h-10"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="specification">规格</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label htmlFor="specification" className="text-sm">规格</Label>
                 <Input
                   id="specification"
                   value={formData.specification}
                   onChange={(e) => setFormData({ ...formData, specification: e.target.value })}
                   placeholder="如：5斤装/箱，单果重200g以上"
+                  className="h-10"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="sellingPoints">卖点（每行一个）</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label htmlFor="sellingPoints" className="text-sm">卖点（每行一个）</Label>
                 <Textarea
                   id="sellingPoints"
                   value={formData.sellingPoints}
                   onChange={(e) => setFormData({ ...formData, sellingPoints: e.target.value })}
                   placeholder="脆甜多汁&#10;产地直发&#10;新鲜采摘"
                   rows={3}
+                  className="text-sm"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="certificates">资质证书（每行一个）</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label htmlFor="certificates" className="text-sm">资质证书（每行一个）</Label>
                 <Textarea
                   id="certificates"
                   value={formData.certificates}
                   onChange={(e) => setFormData({ ...formData, certificates: e.target.value })}
                   placeholder="有机认证&#10;绿色食品认证"
                   rows={2}
+                  className="text-sm"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="prohibitedWords">禁用宣传语（每行一个）</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label htmlFor="prohibitedWords" className="text-sm">禁用宣传语（每行一个）</Label>
                 <Textarea
                   id="prohibitedWords"
                   value={formData.prohibitedWords}
                   onChange={(e) => setFormData({ ...formData, prohibitedWords: e.target.value })}
                   placeholder="最甜&#10;第一&#10;绝对"
                   rows={2}
+                  className="text-sm"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">产品描述</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label htmlFor="description" className="text-sm">产品描述</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="详细的产品介绍..."
                   rows={3}
+                  className="text-sm"
                 />
               </div>
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button variant="outline" size="sm" onClick={() => setIsDialogOpen(false)}>
                 取消
               </Button>
-              <Button onClick={handleSave} disabled={!formData.name || !formData.category}>
+              <Button size="sm" onClick={handleSave} disabled={!formData.name || !formData.category}>
                 保存
               </Button>
             </div>

@@ -38,7 +38,8 @@ import {
   Clock,
   Users,
   TrendingUp,
-  DollarSign
+  DollarSign,
+  ChevronDown
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 
@@ -99,22 +100,22 @@ interface Script {
   style_templates: { name: string };
 }
 
-// 5段式话术结构定义（对应抖音核心算法指标）
+// 5段式话术结构定义
 const SCRIPT_SEGMENTS = [
   { 
     key: "warmUp", 
-    label: "预热环节", 
+    label: "预热", 
     target: "停留时长", 
     icon: Target, 
     color: "from-blue-500 to-blue-600",
     bgColor: "bg-blue-50",
     borderColor: "border-blue-200",
     textColor: "text-blue-700",
-    desc: "吸引注意力，建立期待感，前3秒决定去留"
+    desc: "吸引注意力，建立期待感"
   },
   { 
     key: "retention", 
-    label: "留人环节", 
+    label: "留人", 
     target: "互动率", 
     icon: MessageSquare, 
     color: "from-green-500 to-green-600",
@@ -125,7 +126,7 @@ const SCRIPT_SEGMENTS = [
   },
   { 
     key: "lockCustomer", 
-    label: "锁客环节", 
+    label: "锁客", 
     target: "转化率", 
     icon: Lock, 
     color: "from-purple-500 to-purple-600",
@@ -136,7 +137,7 @@ const SCRIPT_SEGMENTS = [
   },
   { 
     key: "pushOrder", 
-    label: "逼单环节", 
+    label: "逼单", 
     target: "GPM", 
     icon: Zap, 
     color: "from-orange-500 to-orange-600",
@@ -147,7 +148,7 @@ const SCRIPT_SEGMENTS = [
   },
   { 
     key: "atmosphere", 
-    label: "气氛组", 
+    label: "气氛", 
     target: "参与度", 
     icon: PartyPopper, 
     color: "from-pink-500 to-pink-600",
@@ -158,28 +159,17 @@ const SCRIPT_SEGMENTS = [
   },
 ];
 
-// 指标图标
-const METRIC_ICONS: Record<string, typeof Clock> = {
-  "停留时长": Clock,
-  "互动率": Users,
-  "转化率": TrendingUp,
-  "GPM": DollarSign,
-  "参与度": PartyPopper,
-};
-
 export default function ScriptsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [templates, setTemplates] = useState<StyleTemplate[]>([]);
   const [savedScripts, setSavedScripts] = useState<Script[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // 生成参数
   const [selectedProduct, setSelectedProduct] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [targetAudience, setTargetAudience] = useState("");
   const [duration, setDuration] = useState("30");
   
-  // 生成状态
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState("");
   const [parsedData, setParsedData] = useState<ParsedScriptData | null>(null);
@@ -187,19 +177,16 @@ export default function ScriptsPage() {
   const [copied, setCopied] = useState(false);
   const [activeSegment, setActiveSegment] = useState("warmUp");
   
-  // 选项详情弹窗
   const [optionDialog, setOptionDialog] = useState<{
     open: boolean;
     segment: string;
     option: ScriptOption | null;
   }>({ open: false, segment: "", option: null });
   
-  // 已选择的话术
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   
   const outputRef = useRef<HTMLDivElement>(null);
 
-  // 加载初始数据
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -228,7 +215,6 @@ export default function ScriptsPage() {
     loadData();
   }, []);
 
-  // 生成话术（流式）
   const handleGenerate = useCallback(async () => {
     if (!selectedProduct || !selectedTemplate) {
       alert("请选择产品和风格模板");
@@ -296,7 +282,6 @@ export default function ScriptsPage() {
     }
   }, [selectedProduct, selectedTemplate, targetAudience, duration]);
 
-  // 选择话术
   const handleSelectOption = useCallback((segment: string, optionId: string) => {
     setSelectedOptions(prev => ({
       ...prev,
@@ -304,14 +289,12 @@ export default function ScriptsPage() {
     }));
   }, []);
 
-  // 复制单个选项
   const handleCopyOption = useCallback((script: string) => {
     navigator.clipboard.writeText(script);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, []);
 
-  // 导出已选择的话术
   const handleExport = useCallback(() => {
     if (!parsedData) return;
     
@@ -331,7 +314,6 @@ export default function ScriptsPage() {
           exportContent += `✓ 已选择：${selectedOption.style}\n`;
           exportContent += `${selectedOption.script}\n\n`;
         } else if (data.options?.length > 0) {
-          // 如果没有选择，导出所有选项
           data.options.forEach((opt, i) => {
             exportContent += `${i + 1}. 【${opt.style}】\n${opt.script}\n\n`;
           });
@@ -348,7 +330,6 @@ export default function ScriptsPage() {
     URL.revokeObjectURL(url);
   }, [parsedData, selectedOptions]);
 
-  // 合规检查
   const handleCheckCompliance = useCallback(async () => {
     if (!currentScriptId) return;
     
@@ -367,26 +348,25 @@ export default function ScriptsPage() {
     }
   }, [currentScriptId]);
 
-  // 获取已选择数量
   const selectedCount = Object.values(selectedOptions).filter(Boolean).length;
 
   return (
     <MainLayout>
-      <div className="p-6">
-        <PageHeader title="话术生成" description="选择产品和风格，AI自动生成直播话术（每环节5+种选择）" />
+      <div className="p-4 md:p-6 pb-20 md:pb-6">
+        <PageHeader title="话术生成" description="选择产品和风格，AI自动生成直播话术" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6">
           {/* 左侧：生成参数 */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle>生成参数</CardTitle>
+          <Card className="lg:col-span-1 shadow-sm">
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="text-base md:text-lg">生成参数</CardTitle>
               <CardDescription>配置话术生成的参数</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>选择产品 *</Label>
+            <CardContent className="p-4 md:p-6 pt-0 space-y-3 md:space-y-4">
+              <div className="space-y-1.5 md:space-y-2">
+                <Label className="text-sm">选择产品 *</Label>
                 <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-10">
                     <SelectValue placeholder="选择一个产品" />
                   </SelectTrigger>
                   <SelectContent>
@@ -397,10 +377,10 @@ export default function ScriptsPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>风格模板 *</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label className="text-sm">风格模板 *</Label>
                 <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-10">
                     <SelectValue placeholder="选择话术风格" />
                   </SelectTrigger>
                   <SelectContent>
@@ -413,28 +393,30 @@ export default function ScriptsPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>目标人群</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label className="text-sm">目标人群</Label>
                 <Input
                   value={targetAudience}
                   onChange={(e) => setTargetAudience(e.target.value)}
                   placeholder="如：家庭主妇、中老年人"
+                  className="h-10"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>直播时长（分钟）</Label>
+              <div className="space-y-1.5 md:space-y-2">
+                <Label className="text-sm">直播时长（分钟）</Label>
                 <Input
                   type="number"
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
                   min={5}
                   max={120}
+                  className="h-10"
                 />
               </div>
 
               <Button 
-                className="w-full" 
+                className="w-full h-11" 
                 onClick={handleGenerate}
                 disabled={isGenerating || !selectedProduct || !selectedTemplate}
               >
@@ -454,41 +436,35 @@ export default function ScriptsPage() {
           </Card>
 
           {/* 右侧：生成结果 */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <div className="flex items-center justify-between">
+          <Card className="lg:col-span-2 shadow-sm">
+            <CardHeader className="p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <CardTitle>生成结果</CardTitle>
-                  <CardDescription>
-                    抖音实战5段式话术 · 每环节5+种选择 · 点击选择心仪版本
+                  <CardTitle className="text-base md:text-lg">生成结果</CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    5段式话术 · 每环节5+种选择
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {parsedData && (
                     <>
-                      <Badge variant="secondary" className="px-3 py-1">
+                      <Badge variant="secondary" className="px-2 py-1 text-xs">
                         已选择 {selectedCount}/5
                       </Badge>
-                      <Button size="sm" variant="outline" onClick={handleExport}>
-                        <Download className="w-4 h-4 mr-1" />
+                      <Button size="sm" variant="outline" onClick={handleExport} className="h-8 text-xs">
+                        <Download className="w-3 h-3 mr-1" />
                         导出
                       </Button>
-                      {currentScriptId && (
-                        <Button size="sm" variant="outline" onClick={handleCheckCompliance}>
-                          <AlertTriangle className="w-4 h-4 mr-1" />
-                          合规检查
-                        </Button>
-                      )}
                     </>
                   )}
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 md:p-6 pt-0">
               {parsedData ? (
                 <div className="space-y-4">
-                  {/* 5段式指标概览 */}
-                  <div className="grid grid-cols-5 gap-2 mb-4">
+                  {/* 5段式指标概览 - 移动端滚动 */}
+                  <div className="flex overflow-x-auto gap-2 pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-5 md:gap-2">
                     {SCRIPT_SEGMENTS.map((seg) => {
                       const Icon = seg.icon;
                       const data = parsedData[seg.key as keyof ParsedScriptData] as ScriptSegment | undefined;
@@ -499,21 +475,21 @@ export default function ScriptsPage() {
                         <button
                           key={seg.key}
                           onClick={() => setActiveSegment(seg.key)}
-                          className={`relative p-3 rounded-xl border-2 transition-all ${
+                          className={`relative flex-shrink-0 w-16 md:w-auto p-2 md:p-3 rounded-xl border-2 transition-all ${
                             activeSegment === seg.key 
                               ? `${seg.borderColor} ${seg.bgColor} shadow-md` 
                               : "border-slate-200 hover:border-slate-300"
                           }`}
                         >
                           <div className="flex flex-col items-center gap-1">
-                            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center`}>
-                              <Icon className="w-5 h-5 text-white" />
+                            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center`}>
+                              <Icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
                             </div>
                             <span className="text-xs font-medium">{seg.label}</span>
-                            <span className="text-xs text-slate-500">{optionCount}种</span>
+                            <span className="text-xs text-slate-500 hidden md:block">{optionCount}种</span>
                             {isSelected && (
-                              <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full ${seg.bgColor} border-2 ${seg.borderColor} flex items-center justify-center`}>
-                                <Check className="w-3 h-3 text-green-600" />
+                              <div className={`absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 rounded-full ${seg.bgColor} border-2 ${seg.borderColor} flex items-center justify-center`}>
+                                <Check className="w-2 h-2 md:w-3 md:h-3 text-green-600" />
                               </div>
                             )}
                           </div>
@@ -530,12 +506,12 @@ export default function ScriptsPage() {
 
                     return (
                       <div key={seg.key} className="space-y-3">
-                        <div className={`p-4 rounded-lg ${seg.bgColor} ${seg.borderColor} border`}>
+                        <div className={`p-3 md:p-4 rounded-lg ${seg.bgColor} ${seg.borderColor} border`}>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold">{data.title}</span>
-                            <Badge variant="outline">{data.target}</Badge>
+                            <span className="font-semibold text-sm">{data.title}</span>
+                            <Badge variant="outline" className="text-xs">{data.target}</Badge>
                           </div>
-                          <p className="text-sm text-slate-600">{data.description}</p>
+                          <p className="text-xs md:text-sm text-slate-600">{data.description}</p>
                         </div>
 
                         <div className="grid grid-cols-1 gap-3">
@@ -546,57 +522,55 @@ export default function ScriptsPage() {
                               <div
                                 key={option.id}
                                 onClick={() => handleSelectOption(seg.key, option.id)}
-                                className={`relative p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                                className={`relative p-3 md:p-4 rounded-xl border-2 cursor-pointer transition-all ${
                                   isSelected 
                                     ? `${seg.borderColor} ${seg.bgColor} shadow-md` 
                                     : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
                                 }`}
                               >
-                                <div className="flex items-start gap-3">
-                                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm bg-gradient-to-br ${seg.color}`}>
+                                <div className="flex items-start gap-2 md:gap-3">
+                                  <div className={`flex-shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-white font-bold text-xs md:text-sm bg-gradient-to-br ${seg.color}`}>
                                     {index + 1}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <span className="font-medium">{option.style}</span>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="font-medium text-sm">{option.style}</span>
                                       {isSelected && (
-                                        <Badge className={`${seg.textColor} ${seg.bgColor}`}>
+                                        <Badge className={`${seg.textColor} ${seg.bgColor} text-xs`}>
                                           <Check className="w-3 h-3 mr-1" />
                                           已选择
                                         </Badge>
                                       )}
                                     </div>
-                                    <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">
+                                    <p className="text-xs md:text-sm text-slate-700 leading-relaxed line-clamp-2 md:line-clamp-3">
                                       {option.script}
                                     </p>
-                                    {option.tips && (
-                                      <p className="text-xs text-slate-500 mt-2 italic">
-                                        💡 {option.tips}
-                                      </p>
-                                    )}
                                   </div>
-                                  <div className="flex-shrink-0 flex gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOptionDialog({ open: true, segment: seg.key, option });
-                                      }}
-                                    >
-                                      查看
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCopyOption(option.script);
-                                      }}
-                                    >
-                                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                    </Button>
-                                  </div>
+                                </div>
+                                <div className="flex gap-2 mt-2 pt-2 border-t">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-xs flex-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOptionDialog({ open: true, segment: seg.key, option });
+                                    }}
+                                  >
+                                    查看详情
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-xs flex-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyOption(option.script);
+                                    }}
+                                  >
+                                    {copied ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+                                    复制
+                                  </Button>
                                 </div>
                               </div>
                             );
@@ -608,9 +582,9 @@ export default function ScriptsPage() {
 
                   {/* 合规提醒 */}
                   {parsedData.complianceNotes && parsedData.complianceNotes.length > 0 && (
-                    <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <h4 className="font-medium text-amber-800 mb-2">⚠️ 合规提醒</h4>
-                      <ul className="text-sm text-amber-700 space-y-1">
+                    <div className="mt-4 md:mt-6 p-3 md:p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <h4 className="font-medium text-amber-800 text-sm mb-2">⚠️ 合规提醒</h4>
+                      <ul className="text-xs md:text-sm text-amber-700 space-y-1">
                         {parsedData.complianceNotes.map((note, i) => (
                           <li key={i}>• {note}</li>
                         ))}
@@ -621,13 +595,13 @@ export default function ScriptsPage() {
               ) : (
                 <div 
                   ref={outputRef}
-                  className="min-h-[400px] max-h-[600px] overflow-y-auto bg-slate-50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap"
+                  className="min-h-[300px] md:min-h-[400px] max-h-[500px] md:max-h-[600px] overflow-y-auto bg-slate-50 rounded-lg p-3 md:p-4 font-mono text-xs md:text-sm whitespace-pre-wrap"
                 >
                   {generatedContent || (
-                    <div className="text-slate-400 text-center py-12">
-                      <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>选择产品和风格后点击生成按钮</p>
-                      <p className="text-xs mt-2">每个环节将生成5种以上不同风格的话术供您选择</p>
+                    <div className="text-slate-400 text-center py-8 md:py-12">
+                      <Sparkles className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-sm md:text-base">选择产品和风格后点击生成</p>
+                      <p className="text-xs mt-2">每个环节将生成5种以上不同风格的话术</p>
                     </div>
                   )}
                   {isGenerating && (
@@ -640,35 +614,36 @@ export default function ScriptsPage() {
         </div>
 
         {/* 历史话术 */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>历史话术</CardTitle>
+        <Card className="mt-4 md:mt-6 shadow-sm">
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 md:p-6 pt-0">
             {savedScripts.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
+              <div className="text-center py-8 text-slate-500 text-sm">
                 暂无历史话术
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 md:space-y-3">
                 {savedScripts.slice(0, 5).map((script) => (
                   <div 
                     key={script.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 border rounded-lg hover:bg-slate-50 gap-2"
                   >
                     <div>
-                      <h4 className="font-medium">{script.title}</h4>
-                      <p className="text-sm text-slate-500">
+                      <h4 className="font-medium text-sm">{script.title}</h4>
+                      <p className="text-xs text-slate-500">
                         {script.products?.name} | {script.style_templates?.name}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {script.quality_score && (
-                        <Badge variant="secondary">评分: {script.quality_score}</Badge>
+                        <Badge variant="secondary" className="text-xs">评分: {script.quality_score}</Badge>
                       )}
                       {script.compliance_status && (
                         <Badge 
                           variant={script.compliance_status === "pass" ? "default" : "destructive"}
+                          className="text-xs"
                         >
                           {script.compliance_status === "pass" ? "合规" : "待修改"}
                         </Badge>
@@ -685,26 +660,26 @@ export default function ScriptsPage() {
         </Card>
       </div>
 
-      {/* 话术详情弹窗 */}
+      {/* 话术详情弹窗 - 移动端适配 */}
       <Dialog open={optionDialog.open} onOpenChange={(open) => setOptionDialog({ ...optionDialog, open })}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] md:max-w-2xl max-h-[85vh] overflow-y-auto p-4 md:p-6">
           {optionDialog.option && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <span className="px-2 py-1 bg-slate-100 rounded text-sm">{optionDialog.option.style}</span>
+                <DialogTitle className="flex items-center gap-2 text-base md:text-lg">
+                  <span className="px-2 py-1 bg-slate-100 rounded text-xs md:text-sm">{optionDialog.option.style}</span>
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div className="p-4 bg-slate-50 rounded-lg">
-                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+              <div className="space-y-3 md:space-y-4 mt-4">
+                <div className="p-3 md:p-4 bg-slate-50 rounded-lg">
+                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap text-xs md:text-sm">
                     {optionDialog.option.script}
                   </p>
                 </div>
                 
                 {optionDialog.option.tips && (
                   <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-700">
+                    <p className="text-xs md:text-sm text-blue-700">
                       <span className="font-medium">💡 使用技巧：</span>
                       {optionDialog.option.tips}
                     </p>
@@ -713,7 +688,7 @@ export default function ScriptsPage() {
                 
                 {optionDialog.option.valuePoint && (
                   <div className="p-3 bg-purple-50 rounded-lg">
-                    <p className="text-sm text-purple-700">
+                    <p className="text-xs md:text-sm text-purple-700">
                       <span className="font-medium">🎯 核心价值：</span>
                       {optionDialog.option.valuePoint}
                     </p>
@@ -722,19 +697,20 @@ export default function ScriptsPage() {
                 
                 {optionDialog.option.urgency && (
                   <div className="p-3 bg-orange-50 rounded-lg">
-                    <p className="text-sm text-orange-700">
+                    <p className="text-xs md:text-sm text-orange-700">
                       <span className="font-medium">⚡ 紧迫点：</span>
                       {optionDialog.option.urgency}
                     </p>
                   </div>
                 )}
                 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Button 
                     onClick={() => {
                       handleSelectOption(optionDialog.segment, optionDialog.option!.id);
                       setOptionDialog({ ...optionDialog, open: false });
                     }}
+                    className="flex-1 h-10"
                   >
                     <Check className="w-4 h-4 mr-2" />
                     选择此话术
@@ -742,6 +718,7 @@ export default function ScriptsPage() {
                   <Button 
                     variant="outline"
                     onClick={() => handleCopyOption(optionDialog.option!.script)}
+                    className="flex-1 h-10"
                   >
                     {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
                     复制
