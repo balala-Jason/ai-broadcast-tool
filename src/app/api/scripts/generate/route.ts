@@ -232,8 +232,30 @@ export async function POST(request: NextRequest) {
 
     // 创建流式响应
     const encoder = new TextEncoder();
+    let isControllerClosed = false;
+    
     const stream = new ReadableStream({
       async start(controller) {
+        const safeEnqueue = (data: Uint8Array) => {
+          if (isControllerClosed) return;
+          try {
+            controller.enqueue(data);
+          } catch (e) {
+            console.error("Enqueue failed:", e);
+            isControllerClosed = true;
+          }
+        };
+        
+        const safeClose = () => {
+          if (isControllerClosed) return;
+          try {
+            controller.close();
+          } catch (e) {
+            console.error("Close failed:", e);
+          }
+          isControllerClosed = true;
+        };
+        
         try {
           const messages = [{ role: "user" as const, content: prompt }];
           const llmStream = llmClient.stream(messages, {
@@ -244,16 +266,21 @@ export async function POST(request: NextRequest) {
           let fullContent = "";
           
           for await (const chunk of llmStream) {
+            if (isControllerClosed) break;
+            
             if (chunk.content) {
               const text = chunk.content.toString();
               fullContent += text;
               
               // 发送SSE事件
-              controller.enqueue(
+              safeEnqueue(
                 encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: text })}\n\n`)
               );
             }
           }
+
+          // 如果控制器已关闭，不继续处理
+          if (isControllerClosed) return;
 
           // 解析生成的内容
           let scriptData = null;
@@ -295,7 +322,7 @@ export async function POST(request: NextRequest) {
           }
 
           // 发送完成事件
-          controller.enqueue(
+          safeEnqueue(
             encoder.encode(`data: ${JSON.stringify({ 
               type: "done", 
               scriptId: savedScript?.id,
@@ -303,13 +330,13 @@ export async function POST(request: NextRequest) {
             })}\n\n`)
           );
           
-          controller.close();
+          safeClose();
         } catch (streamError) {
           console.error("Stream error:", streamError);
-          controller.enqueue(
+          safeEnqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "error", message: String(streamError) })}\n\n`)
           );
-          controller.close();
+          safeClose();
         }
       },
     });
