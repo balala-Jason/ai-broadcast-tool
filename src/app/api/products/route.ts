@@ -54,20 +54,34 @@ export async function POST(request: NextRequest) {
     const client = getSupabaseClient();
     const body = await request.json();
 
-    // 处理JSON字段
-    const processedData = {
-      ...body,
-      selling_points: body.sellingPoints ? JSON.stringify(body.sellingPoints) : null,
-      certificates: body.certificates ? JSON.stringify(body.certificates) : null,
-      prohibited_words: body.prohibitedWords ? JSON.stringify(body.prohibitedWords) : null,
-      images: body.images ? JSON.stringify(body.images) : null,
+    // 直接构造数据，避免Zod schema字段名映射问题
+    const insertData: Record<string, any> = {
+      name: body.name,
+      category: body.category,
+      origin: body.origin || null,
+      price: body.price || null,
+      specification: body.specification || null,
+      description: body.description || null,
+      is_active: true,
     };
 
-    const validatedData = insertProductSchema.parse(processedData);
+    // 处理JSON字段
+    if (body.sellingPoints && Array.isArray(body.sellingPoints)) {
+      insertData.selling_points = JSON.stringify(body.sellingPoints);
+    }
+    if (body.certificates && Array.isArray(body.certificates)) {
+      insertData.certificates = JSON.stringify(body.certificates);
+    }
+    if (body.prohibitedWords && Array.isArray(body.prohibitedWords)) {
+      insertData.prohibited_words = JSON.stringify(body.prohibitedWords);
+    }
+    if (body.images && Array.isArray(body.images)) {
+      insertData.images = JSON.stringify(body.images);
+    }
 
     const { data, error } = await client
       .from("products")
-      .insert(validatedData)
+      .insert(insertData)
       .select()
       .single();
 
@@ -80,12 +94,6 @@ export async function POST(request: NextRequest) {
       data,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "数据验证失败", details: error.issues },
-        { status: 400 }
-      );
-    }
     console.error("Create product error:", error);
     return NextResponse.json(
       { error: "创建产品失败" },
