@@ -39,15 +39,24 @@ interface VideoItem {
   id: string;
   title: string;
   author: string;
+  authorAvatar?: string;
   duration: number;
   likes: number;
   plays: number;
+  comments?: number;
+  shares?: number;
   coverUrl: string;
+  videoUrl?: string;
   sourceUrl: string;
   sourceId: string;
   createdAt: string;
+  tags?: string[];
+  category?: string;
+  description?: string;
   isRealData?: boolean;
+  dataSource?: string;
   snippet?: string;
+  contentType?: string;
 }
 
 interface SavedMaterial {
@@ -324,7 +333,19 @@ export default function MaterialsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium line-clamp-2 mb-1 text-sm">{video.title}</h3>
-                          <p className="text-xs text-slate-500 mb-2">{video.author}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            {video.authorAvatar && (
+                              <img src={video.authorAvatar} alt={video.author} className="w-4 h-4 rounded-full" />
+                            )}
+                            <p className="text-xs text-slate-500">{video.author}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            {video.tags?.slice(0, 3).map((tag, idx) => (
+                              <Badge key={idx} variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                                #{tag}
+                              </Badge>
+                            ))}
+                          </div>
                           <div className="flex items-center gap-3 text-xs text-slate-400 mb-2">
                             <span className="flex items-center gap-1">
                               <Heart className="w-3 h-3" />
@@ -334,9 +355,19 @@ export default function MaterialsPage() {
                               <Eye className="w-3 h-3" />
                               {formatNumber(video.plays)}
                             </span>
-                            {video.isRealData && (
+                            {video.comments && (
+                              <span className="flex items-center gap-1">
+                                <MessageSquare className="w-3 h-3" />
+                                {formatNumber(video.comments)}
+                              </span>
+                            )}
+                            {video.isRealData ? (
                               <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-200">
                                 真实数据
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
+                                示例数据
                               </Badge>
                             )}
                           </div>
