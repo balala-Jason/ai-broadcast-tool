@@ -9,9 +9,32 @@ export async function GET(request: NextRequest) {
     const client = getSupabaseClient();
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get("productId");
+    const category = searchParams.get("category"); // 新增品类筛选
     const status = searchParams.get("status");
     const page = parseInt(searchParams.get("page") || "1");
     const pageSize = parseInt(searchParams.get("pageSize") || "20");
+
+    // 先获取产品ID列表（如果按品类筛选）
+    let productIds: string[] | null = null;
+    if (category) {
+      const { data: productsByCategory } = await client
+        .from("products")
+        .select("id")
+        .eq("category", category);
+      productIds = (productsByCategory || []).map(p => p.id);
+      
+      // 如果没有该品类的产品，直接返回空结果
+      if (productIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+          total: 0,
+          page,
+          pageSize,
+          categories: [],
+        });
+      }
+    }
 
     let query = client
       .from("scripts")
@@ -21,6 +44,8 @@ export async function GET(request: NextRequest) {
 
     if (productId) {
       query = query.eq("product_id", productId);
+    } else if (productIds) {
+      query = query.in("product_id", productIds);
     }
     if (status) {
       query = query.eq("status", status);
@@ -32,14 +57,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 获取所有产品的品类列表（用于筛选）
+    const { data: allProducts } = await client
+      .from("products")
+      .select("id, name, category");
+    
+    const categories = [...new Set((allProducts || []).map(p => p.category).filter(Boolean))];
+
     // 单独获取产品和模板信息
     let enrichedData = data || [];
     if (data && data.length > 0) {
-      const productIds = [...new Set(data.map(s => s.product_id))];
+      const scriptProductIds = [...new Set(data.map(s => s.product_id))];
       const templateIds = [...new Set(data.map(s => s.style_template_id))];
       
       const [productsRes, templatesRes] = await Promise.all([
-        client.from("products").select("id, name, category").in("id", productIds),
+        client.from("products").select("id, name, category").in("id", scriptProductIds),
         client.from("style_templates").select("id, name, style_type").in("id", templateIds),
       ]);
       
@@ -59,6 +91,7 @@ export async function GET(request: NextRequest) {
       total: count || 0,
       page,
       pageSize,
+      categories, // 返回品类列表
     });
   } catch (error) {
     console.error("Get scripts error:", error);

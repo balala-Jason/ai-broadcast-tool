@@ -41,9 +41,12 @@ import {
   DollarSign,
   ChevronDown,
   Radio,
-  Play
+  Play,
+  Trash2,
+  Eye
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
 
 interface Product {
   id: string;
@@ -98,8 +101,22 @@ interface Script {
   quality_score: string | null;
   compliance_status: string | null;
   created_at: string;
-  products: { name: string };
+  products: { name: string; category?: string };
   style_templates: { name: string };
+}
+
+interface SavedScript {
+  id: number;
+  title: string;
+  content: string | null;
+  parsed_data: ParsedScriptData | null;
+  quality_score: number | null;
+  compliance_status: string | null;
+  created_at: string;
+  product_id: string;
+  template_id: string;
+  products?: { name: string; category?: string };
+  style_templates?: { name: string };
 }
 
 // 5段式话术结构定义
@@ -164,7 +181,10 @@ const SCRIPT_SEGMENTS = [
 export default function ScriptsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [templates, setTemplates] = useState<StyleTemplate[]>([]);
-  const [savedScripts, setSavedScripts] = useState<Script[]>([]);
+  const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [historyCategory, setHistoryCategory] = useState("");
+  const [selectedHistoryScript, setSelectedHistoryScript] = useState<SavedScript | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -184,6 +204,11 @@ export default function ScriptsPage() {
     segment: string;
     option: ScriptOption | null;
   }>({ open: false, segment: "", option: null });
+  
+  const [historyDialog, setHistoryDialog] = useState<{
+    open: boolean;
+    script: Script | null;
+  }>({ open: false, script: null });
   
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   
@@ -336,6 +361,30 @@ export default function ScriptsPage() {
     };
   }, []);
 
+  // 加载保存的话术
+  const loadSavedScripts = useCallback(async () => {
+    try {
+      const url = historyCategory 
+        ? `/api/scripts?category=${encodeURIComponent(historyCategory)}`
+        : "/api/scripts";
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.success) {
+        setSavedScripts(data.data);
+        if (data.categories) {
+          setCategories(data.categories);
+        }
+      }
+    } catch (error) {
+      console.error("Load scripts failed:", error);
+    }
+  }, [historyCategory]);
+
+  // 品类变化时重新加载
+  useEffect(() => {
+    loadSavedScripts();
+  }, [loadSavedScripts]);
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -353,7 +402,12 @@ export default function ScriptsPage() {
         
         if (productsData.success) setProducts(productsData.data);
         if (templatesData.success) setTemplates(templatesData.data);
-        if (scriptsData.success) setSavedScripts(scriptsData.data);
+        if (scriptsData.success) {
+          setSavedScripts(scriptsData.data);
+          if (scriptsData.categories) {
+            setCategories(scriptsData.categories);
+          }
+        }
       } catch (error) {
         console.error("Load data failed:", error);
       } finally {
@@ -555,6 +609,84 @@ export default function ScriptsPage() {
       }
     }
   }, [selectedProduct, selectedTemplate, targetAudience, duration]);
+
+  // 解析流式数据为结构化话术
+  const parseStreamData = useCallback((content: string): ParsedScriptData | null => {
+    if (!content) return null;
+    
+    try {
+      // 尝试从内容中提取JSON数据
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]) as ParsedScriptData;
+      }
+      
+      // 如果没有JSON格式，尝试解析段落格式
+      const segments = content.split(/【[^】]+】/);
+      const result: ParsedScriptData = {};
+      
+      SCRIPT_SEGMENTS.forEach((seg, index) => {
+        if (segments[index + 1]) {
+          (result as Record<string, ScriptSegment>)[seg.key] = {
+            title: seg.label,
+            target: seg.target,
+            description: seg.desc,
+            options: [{
+              id: `opt-${seg.key}-1`,
+              style: "默认风格",
+              script: segments[index + 1].trim()
+            }]
+          };
+        }
+      });
+      
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (e) {
+      console.error("Parse stream data failed:", e);
+      return null;
+    }
+  }, []);
+
+  // 查看历史话术详情
+  const handleViewHistoryScript = useCallback((script: SavedScript) => {
+    setSelectedHistoryScript(script);
+    if (script.parsed_data) {
+      setParsedData(script.parsed_data);
+    } else if (script.content) {
+      // 如果没有解析数据，尝试从内容解析
+      try {
+        const parsed = parseStreamData(script.content);
+        setParsedData(parsed);
+      } catch (e) {
+        console.error("Parse script failed:", e);
+      }
+    }
+  }, [parseStreamData]);
+
+  // 删除历史话术
+  const handleDeleteScript = useCallback(async (scriptId: number) => {
+    if (!confirm("确定要删除这个话术吗？")) return;
+    
+    try {
+      const response = await fetch(`/api/scripts/${scriptId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setSavedScripts(prev => prev.filter(s => s.id !== scriptId));
+        if (selectedHistoryScript?.id === scriptId) {
+          setSelectedHistoryScript(null);
+        }
+        toast.success("话术已删除");
+      } else {
+        toast.error("删除失败");
+      }
+    } catch (error) {
+      console.error("Delete script failed:", error);
+      toast.error("删除失败");
+    }
+  }, [selectedHistoryScript]);
 
   const handleSelectOption = useCallback((segment: string, optionId: string) => {
     setSelectedOptions(prev => ({
@@ -980,7 +1112,30 @@ export default function ScriptsPage() {
         {/* 历史话术 */}
         <Card className="mt-4 md:mt-6 shadow-sm">
           <CardHeader className="p-4 md:p-6">
-            <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
+              <div className="flex gap-2">
+                <Select value={historyCategory} onValueChange={setHistoryCategory}>
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue placeholder="全部品类" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">全部品类</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-8 text-xs"
+                  onClick={loadSavedScripts}
+                >
+                  刷新
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-0">
             {savedScripts.length === 0 ? (
@@ -989,13 +1144,21 @@ export default function ScriptsPage() {
               </div>
             ) : (
               <div className="space-y-2 md:space-y-3">
-                {savedScripts.slice(0, 5).map((script) => (
+                {savedScripts.map((script) => (
                   <div 
                     key={script.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 border rounded-lg hover:bg-slate-50 gap-2"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 border rounded-lg hover:bg-slate-50 gap-2 cursor-pointer"
+                    onClick={() => handleViewHistoryScript(script)}
                   >
-                    <div>
-                      <h4 className="font-medium text-sm">{script.title}</h4>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-sm truncate">{script.title}</h4>
+                        {script.products?.category && (
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {script.products.category}
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-500">
                         {script.products?.name} | {script.style_templates?.name}
                       </p>
@@ -1015,6 +1178,17 @@ export default function ScriptsPage() {
                       <span className="text-xs text-slate-400">
                         {new Date(script.created_at).toLocaleDateString()}
                       </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-slate-400 hover:text-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteScript(script.id);
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ))}
