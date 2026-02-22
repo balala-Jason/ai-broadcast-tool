@@ -197,6 +197,41 @@ export default function ScriptsPage() {
   const outputRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const statusPollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 状态轮询 - 用于页面切换后恢复状态
+  const startStatusPolling = useCallback(() => {
+    // 清除之前的轮询
+    if (statusPollingRef.current) {
+      clearInterval(statusPollingRef.current);
+    }
+    
+    // 每500ms检查一次localStorage中的状态
+    statusPollingRef.current = setInterval(() => {
+      const savedStatus = localStorage.getItem("script_generation_status");
+      if (savedStatus) {
+        try {
+          const status = JSON.parse(savedStatus);
+          setGenerationStatus(status);
+          
+          if (!status.isGenerating && status.result) {
+            // 生成完成，恢复结果并停止轮询
+            setGeneratedContent(status.result.content || "");
+            setParsedData(status.result.parsedData || null);
+            setCurrentScriptId(status.result.scriptId || null);
+            setIsGenerating(false);
+            
+            if (statusPollingRef.current) {
+              clearInterval(statusPollingRef.current);
+              statusPollingRef.current = null;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse status:", e);
+        }
+      }
+    }, 500);
+  }, []);
 
   // 初始化BroadcastChannel用于跨页面通信
   useEffect(() => {
@@ -212,15 +247,49 @@ export default function ScriptsPage() {
             setParsedData(data.result.parsedData || null);
             setCurrentScriptId(data.result.scriptId || null);
             setIsGenerating(false);
+          } else if (data.isGenerating) {
+            // 仍在生成中，启动轮询
+            setIsGenerating(true);
+            startStatusPolling();
           }
         }
       };
     }
     
+    // 初始化时检查是否有之前的状态
+    const savedStatus = localStorage.getItem("script_generation_status");
+    if (savedStatus) {
+      try {
+        const status = JSON.parse(savedStatus);
+        // 检查状态是否是最近5分钟内的
+        if (status.timestamp && Date.now() - status.timestamp < 5 * 60 * 1000) {
+          setGenerationStatus(status);
+          
+          if (status.result) {
+            // 生成已完成，恢复结果
+            setGeneratedContent(status.result.content || "");
+            setParsedData(status.result.parsedData || null);
+            setCurrentScriptId(status.result.scriptId || null);
+            setIsGenerating(false);
+          } else if (status.isGenerating) {
+            // 仍在生成中，启动轮询
+            setIsGenerating(true);
+            startStatusPolling();
+          }
+        } else {
+          // 状态过期，清除
+          localStorage.removeItem("script_generation_status");
+        }
+      } catch (e) {
+        console.error("Failed to parse saved status:", e);
+        localStorage.removeItem("script_generation_status");
+      }
+    }
+    
     return () => {
       broadcastChannelRef.current?.close();
     };
-  }, []);
+  }, [startStatusPolling]);
 
   // 页面可见性变化处理 - 确保后台生成继续
   useEffect(() => {
@@ -255,39 +324,7 @@ export default function ScriptsPage() {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
-
-  // 状态轮询 - 用于页面切换后恢复状态
-  const statusPollingRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const startStatusPolling = useCallback(() => {
-    // 清除之前的轮询
-    if (statusPollingRef.current) {
-      clearInterval(statusPollingRef.current);
-    }
-    
-    // 每500ms检查一次localStorage中的状态
-    statusPollingRef.current = setInterval(() => {
-      const savedStatus = localStorage.getItem("script_generation_status");
-      if (savedStatus) {
-        const status = JSON.parse(savedStatus);
-        setGenerationStatus(status);
-        
-        if (!status.isGenerating && status.result) {
-          // 生成完成，恢复结果并停止轮询
-          setGeneratedContent(status.result.content || "");
-          setParsedData(status.result.parsedData || null);
-          setCurrentScriptId(status.result.scriptId || null);
-          setIsGenerating(false);
-          
-          if (statusPollingRef.current) {
-            clearInterval(statusPollingRef.current);
-            statusPollingRef.current = null;
-          }
-        }
-      }
-    }, 500);
-  }, []);
+  }, [startStatusPolling]);
 
   // 组件卸载时清理
   useEffect(() => {
@@ -354,6 +391,8 @@ export default function ScriptsPage() {
     // 创建新的AbortController
     abortControllerRef.current = new AbortController();
 
+    let isCompleted = false; // 标记是否已完成
+
     try {
       const response = await fetch("/api/scripts/generate", {
         method: "POST",
@@ -375,8 +414,6 @@ export default function ScriptsPage() {
       }
 
       let fullContent = "";
-      let lastParsedData: ParsedScriptData | null = null;
-      let lastScriptId: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -394,18 +431,20 @@ export default function ScriptsPage() {
                 fullContent += data.content;
                 setGeneratedContent((prev) => prev + data.content);
                 
-                // 更新进度状态
-                const progress = Math.min(95, (fullContent.length / 2000) * 100);
+                // 更新进度状态 - 使用更合理的进度计算
+                // 假设完整响应大约6000字符
+                const progress = Math.min(90, Math.round((fullContent.length / 6000) * 100));
                 const newStatus = {
-                  ...status,
+                  isGenerating: true,
                   progress,
-                  message: `正在生成话术... ${Math.round(progress)}%`,
+                  message: `正在生成话术... ${progress}%`,
+                  result: null,
+                  timestamp: Date.now(),
                 };
                 setGenerationStatus(newStatus);
                 localStorage.setItem("script_generation_status", JSON.stringify(newStatus));
               } else if (data.type === "done") {
-                lastScriptId = data.scriptId;
-                lastParsedData = data.scriptData || null;
+                isCompleted = true;
                 setCurrentScriptId(data.scriptId);
                 if (data.scriptData) {
                   setParsedData(data.scriptData);
@@ -438,10 +477,55 @@ export default function ScriptsPage() {
                 setGenerationStatus(errorStatus);
                 localStorage.setItem("script_generation_status", JSON.stringify(errorStatus));
               }
-            } catch {
-              // 忽略解析错误
+            } catch (parseError) {
+              // 忽略解析错误，继续处理
+              console.log("Parse error:", parseError);
             }
           }
+        }
+      }
+      
+      // 如果流结束了但没有收到done事件，尝试从内容中解析
+      if (!isCompleted && fullContent) {
+        console.log("Stream ended without done event, parsing content...");
+        
+        try {
+          // 尝试从内容中提取JSON
+          const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const scriptData = JSON.parse(jsonMatch[0]);
+            setParsedData(scriptData);
+            
+            const finalStatus = {
+              isGenerating: false,
+              progress: 100,
+              message: "生成完成",
+              result: {
+                content: fullContent,
+                parsedData: scriptData,
+                scriptId: null,
+              },
+              timestamp: Date.now(),
+            };
+            setGenerationStatus(finalStatus);
+            localStorage.setItem("script_generation_status", JSON.stringify(finalStatus));
+          }
+        } catch (parseError) {
+          console.error("Failed to parse script data:", parseError);
+          // 即使解析失败，也标记为完成
+          const finalStatus = {
+            isGenerating: false,
+            progress: 100,
+            message: "生成完成",
+            result: {
+              content: fullContent,
+              parsedData: null,
+              scriptId: null,
+            },
+            timestamp: Date.now(),
+          };
+          setGenerationStatus(finalStatus);
+          localStorage.setItem("script_generation_status", JSON.stringify(finalStatus));
         }
       }
     } catch (error: any) {
