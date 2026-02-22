@@ -33,6 +33,11 @@ const navigation = [
     icon: LayoutDashboard 
   },
   { 
+    name: "话术生成", 
+    href: "/scripts", 
+    icon: Sparkles 
+  },
+  { 
     name: "素材采集", 
     href: "/materials", 
     icon: Video 
@@ -41,11 +46,6 @@ const navigation = [
     name: "产品管理", 
     href: "/products", 
     icon: Package 
-  },
-  { 
-    name: "话术生成", 
-    href: "/scripts", 
-    icon: Sparkles 
   },
   { 
     name: "风格模板", 
@@ -64,11 +64,11 @@ const navigation = [
   },
 ];
 
-// 底部导航（移动端常用功能）
+// 底部导航（移动端常用功能）- 话术生成优先
 const bottomNav = [
   { name: "工作台", href: "/", icon: LayoutDashboard },
-  { name: "素材", href: "/materials", icon: Video },
   { name: "话术", href: "/scripts", icon: Sparkles },
+  { name: "素材", href: "/materials", icon: Video },
   { name: "我的", href: "/settings", icon: Settings },
 ];
 

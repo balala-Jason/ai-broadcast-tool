@@ -189,7 +189,9 @@ export default function ScriptsPage() {
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
   const [productList, setProductList] = useState<string[]>([]);
   const [historyProduct, setHistoryProduct] = useState("all");
+  const [historyStage, setHistoryStage] = useState<string>("all"); // 阶段筛选
   const [selectedHistoryScript, setSelectedHistoryScript] = useState<SavedScript | null>(null);
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({}); // 展开状态
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -1090,32 +1092,81 @@ export default function ScriptsPage() {
           </Card>
         </div>
 
-        {/* 历史话术 - 手机端优化：直接展示内容 */}
+        {/* 历史话术 - 按阶段总览视图 */}
         <Card className="mt-4 md:mt-6 shadow-sm">
           <CardHeader className="p-4 md:p-6 pb-2 md:pb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
-              <div className="flex gap-2">
-                <Select value={historyProduct} onValueChange={setHistoryProduct}>
-                  <SelectTrigger className="w-40 h-8 text-xs">
-                    <SelectValue placeholder="全部产品" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部产品</SelectItem>
-                    {productList.map((prod) => (
-                      <SelectItem key={prod} value={prod}>{prod}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-8 text-xs"
-                  onClick={loadSavedScripts}
-                >
-                  刷新
-                </Button>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
+                <div className="flex flex-wrap gap-2">
+                  <Select value={historyProduct} onValueChange={setHistoryProduct}>
+                    <SelectTrigger className="w-36 h-8 text-xs">
+                      <SelectValue placeholder="全部产品" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部产品</SelectItem>
+                      {productList.map((prod) => (
+                        <SelectItem key={prod} value={prod}>{prod}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={historyStage} onValueChange={setHistoryStage}>
+                    <SelectTrigger className="w-28 h-8 text-xs">
+                      <SelectValue placeholder="全部阶段" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部阶段</SelectItem>
+                      {SCRIPT_SEGMENTS.map((seg) => (
+                        <SelectItem key={seg.key} value={seg.key}>{seg.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs"
+                    onClick={loadSavedScripts}
+                  >
+                    刷新
+                  </Button>
+                </div>
               </div>
+              
+              {/* 统计概览 */}
+              {savedScripts.length > 0 && (
+                <div className="grid grid-cols-5 gap-2 p-3 bg-slate-50 rounded-lg">
+                  {SCRIPT_SEGMENTS.map((seg) => {
+                    const count = savedScripts.filter(script => {
+                      const fieldMap: Record<string, string> = {
+                        warmUp: 'warm_up',
+                        retention: 'retention',
+                        lockCustomer: 'lock_customer',
+                        pushOrder: 'push_order',
+                        atmosphere: 'atmosphere'
+                      };
+                      const field = fieldMap[seg.key];
+                      const value = (script as any)[field];
+                      return value && value !== null;
+                    }).length;
+                    const Icon = seg.icon;
+                    return (
+                      <div 
+                        key={seg.key} 
+                        className={`text-center p-2 rounded-lg cursor-pointer transition-all ${
+                          historyStage === seg.key ? `ring-2 ${seg.borderColor} bg-white` : 'hover:bg-white'
+                        }`}
+                        onClick={() => setHistoryStage(historyStage === seg.key ? 'all' : seg.key)}
+                      >
+                        <div className={`w-8 h-8 mx-auto rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center mb-1`}>
+                          <Icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="text-lg font-bold text-slate-800">{count}</div>
+                        <div className="text-xs text-slate-500">{seg.label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-0">
@@ -1123,7 +1174,8 @@ export default function ScriptsPage() {
               <div className="text-center py-8 text-slate-500 text-sm">
                 暂无历史话术，点击上方"生成话术"按钮创建
               </div>
-            ) : (
+            ) : historyStage === 'all' ? (
+              /* 全部阶段视图 - 按话术记录展示 */
               <div className="space-y-3 md:space-y-4">
                 {savedScripts.map((script) => {
                   // 解析话术内容
@@ -1148,11 +1200,6 @@ export default function ScriptsPage() {
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
-                            {script.products?.category && (
-                              <Badge variant="outline" className="text-xs flex-shrink-0">
-                                {script.products.category}
-                              </Badge>
-                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1273,6 +1320,102 @@ export default function ScriptsPage() {
                   );
                 })}
               </div>
+            ) : (
+              /* 单阶段视图 - 只显示选中阶段的话术 */
+              (() => {
+                const stageInfo = SCRIPT_SEGMENTS.find(s => s.key === historyStage);
+                if (!stageInfo) return null;
+                const Icon = stageInfo.icon;
+                const fieldMap: Record<string, string> = {
+                  warmUp: 'warm_up',
+                  retention: 'retention',
+                  lockCustomer: 'lock_customer',
+                  pushOrder: 'push_order',
+                  atmosphere: 'atmosphere'
+                };
+                const field = fieldMap[historyStage];
+                
+                // 过滤出有该阶段内容的脚本
+                const scriptsWithStage = savedScripts.filter(script => {
+                  const value = (script as any)[field];
+                  return value && value !== null;
+                });
+                
+                return (
+                  <div className="space-y-3">
+                    <div className={`p-3 rounded-lg ${stageInfo.bgColor} border ${stageInfo.borderColor}`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${stageInfo.color} flex items-center justify-center`}>
+                          <Icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <h3 className={`font-semibold ${stageInfo.textColor}`}>{stageInfo.label}环节话术</h3>
+                          <p className="text-xs text-slate-500">共 {scriptsWithStage.length} 条历史话术</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {scriptsWithStage.length === 0 ? (
+                      <div className="text-center py-6 text-slate-500 text-sm">
+                        暂无{stageInfo.label}环节的历史话术
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {scriptsWithStage.map((script, idx) => {
+                          const stageData = (script as any)[field];
+                          const parsedData = typeof stageData === 'string' ? JSON.parse(stageData) : stageData;
+                          const option = parsedData?.options?.[0];
+                          
+                          return (
+                            <div 
+                              key={script.id}
+                              className={`p-3 rounded-lg border ${stageInfo.borderColor} bg-white`}
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-6 h-6 rounded-full bg-gradient-to-br ${stageInfo.color} text-white text-xs flex items-center justify-center font-medium`}>
+                                    {idx + 1}
+                                  </span>
+                                  <div>
+                                    <span className="text-xs font-medium text-slate-700">{script.products?.name}</span>
+                                    <span className="text-xs text-slate-400 ml-2">
+                                      {new Date(script.created_at).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs px-2"
+                                  onClick={() => {
+                                    if (option?.script) {
+                                      navigator.clipboard.writeText(option.script);
+                                      toast.success("话术已复制");
+                                    }
+                                  }}
+                                >
+                                  <Copy className="w-3 h-3 mr-1" />
+                                  复制
+                                </Button>
+                              </div>
+                              {option?.script && (
+                                <p className="text-sm text-slate-600 leading-relaxed pl-8">
+                                  {option.script}
+                                </p>
+                              )}
+                              {option?.tips && (
+                                <p className="text-xs text-slate-500 mt-2 pl-8 pt-2 border-t border-slate-100">
+                                  💡 {option.tips}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </CardContent>
         </Card>
