@@ -287,22 +287,20 @@ export async function POST(request: NextRequest) {
 
           let fullContent = "";
           
+          // 即使客户端断开连接，也要继续完成生成
           for await (const chunk of llmStream) {
-            if (isControllerClosed) break;
-            
             if (chunk.content) {
               const text = chunk.content.toString();
               fullContent += text;
               
-              // 发送SSE事件
-              safeEnqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: text })}\n\n`)
-              );
+              // 只有客户端还在线时才发送SSE事件
+              if (!isControllerClosed) {
+                safeEnqueue(
+                  encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: text })}\n\n`)
+                );
+              }
             }
           }
-
-          // 如果控制器已关闭，不继续处理
-          if (isControllerClosed) return;
 
           // 解析生成的内容
           let scriptData = null;
@@ -310,22 +308,42 @@ export async function POST(request: NextRequest) {
             const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               scriptData = JSON.parse(jsonMatch[0]);
+              console.log("Parsed scriptData keys:", Object.keys(scriptData || {}));
             }
           } catch (parseError) {
             console.error("Parse script error:", parseError);
             scriptData = { rawContent: fullContent };
           }
 
-          // 更新话术到数据库（抖音实战5段式结构）
-          const scriptUpdate = {
-            // 抖音实战5段式
-            warm_up: scriptData?.warmUp ? JSON.stringify(scriptData.warmUp) : null,
-            retention: scriptData?.retention ? JSON.stringify(scriptData.retention) : null,
-            lock_customer: scriptData?.lockCustomer ? JSON.stringify(scriptData.lockCustomer) : null,
-            push_order: scriptData?.pushOrder ? JSON.stringify(scriptData.pushOrder) : null,
-            atmosphere: scriptData?.atmosphere ? JSON.stringify(scriptData.atmosphere) : null,
-            status: "draft",
+          // 兼容驼峰和下划线命名
+          const getFieldValue = (data: any, camelKey: string, snakeKey: string) => {
+            return data?.[camelKey] || data?.[snakeKey] || null;
           };
+
+          // 更新话术到数据库（抖音实战5段式结构）
+          // 即使客户端断开连接，也要保存话术
+          const scriptUpdate = {
+            // 抖音实战5段式 - 兼容两种命名方式
+            warm_up: getFieldValue(scriptData, 'warmUp', 'warm_up') ? 
+              JSON.stringify(getFieldValue(scriptData, 'warmUp', 'warm_up')) : null,
+            retention: getFieldValue(scriptData, 'retention', 'retention') ? 
+              JSON.stringify(getFieldValue(scriptData, 'retention', 'retention')) : null,
+            lock_customer: getFieldValue(scriptData, 'lockCustomer', 'lock_customer') ? 
+              JSON.stringify(getFieldValue(scriptData, 'lockCustomer', 'lock_customer')) : null,
+            push_order: getFieldValue(scriptData, 'pushOrder', 'push_order') ? 
+              JSON.stringify(getFieldValue(scriptData, 'pushOrder', 'push_order')) : null,
+            atmosphere: getFieldValue(scriptData, 'atmosphere', 'atmosphere') ? 
+              JSON.stringify(getFieldValue(scriptData, 'atmosphere', 'atmosphere')) : null,
+            status: "draft" as const,
+          };
+
+          console.log("Script update fields:", {
+            warm_up: !!scriptUpdate.warm_up,
+            retention: !!scriptUpdate.retention,
+            lock_customer: !!scriptUpdate.lock_customer,
+            push_order: !!scriptUpdate.push_order,
+            atmosphere: !!scriptUpdate.atmosphere,
+          });
 
           const { data: savedScript, error: saveError } = await client
             .from("scripts")
@@ -336,9 +354,11 @@ export async function POST(request: NextRequest) {
 
           if (saveError) {
             console.error("Save script error:", saveError);
+          } else {
+            console.log("Script saved successfully:", savedScript?.id);
           }
 
-          // 发送完成事件
+          // 尝试发送完成事件（如果客户端还在线）
           safeEnqueue(
             encoder.encode(`data: ${JSON.stringify({ 
               type: "done", 
