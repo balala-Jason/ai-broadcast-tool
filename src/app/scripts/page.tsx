@@ -183,7 +183,7 @@ export default function ScriptsPage() {
   const [templates, setTemplates] = useState<StyleTemplate[]>([]);
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [historyCategory, setHistoryCategory] = useState("");
+  const [historyCategory, setHistoryCategory] = useState("all");
   const [selectedHistoryScript, setSelectedHistoryScript] = useState<SavedScript | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -364,7 +364,7 @@ export default function ScriptsPage() {
   // 加载保存的话术
   const loadSavedScripts = useCallback(async () => {
     try {
-      const url = historyCategory 
+      const url = historyCategory && historyCategory !== "all"
         ? `/api/scripts?category=${encodeURIComponent(historyCategory)}`
         : "/api/scripts";
       const response = await fetch(url);
@@ -1120,7 +1120,7 @@ export default function ScriptsPage() {
                     <SelectValue placeholder="全部品类" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">全部品类</SelectItem>
+                    <SelectItem value="all">全部品类</SelectItem>
                     {categories.map((cat) => (
                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                     ))}
