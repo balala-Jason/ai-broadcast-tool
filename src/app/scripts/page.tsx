@@ -43,7 +43,8 @@ import {
   Radio,
   Play,
   Trash2,
-  Eye
+  Eye,
+  Package
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -183,15 +184,244 @@ const SCRIPT_SEGMENTS = [
   },
 ];
 
+// 历史话术按阶段展示组件
+function HistoryScriptsByStage({ 
+  scripts, 
+  selectedProduct,
+  onDelete 
+}: { 
+  scripts: SavedScript[]; 
+  selectedProduct: string;
+  onDelete: (id: number) => void;
+}) {
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
+  
+  // 按产品筛选
+  const filteredScripts = selectedProduct && selectedProduct !== "all"
+    ? scripts.filter(s => s.products?.name === selectedProduct)
+    : scripts;
+  
+  // 按产品分组
+  const scriptsByProduct = filteredScripts.reduce((acc, script) => {
+    const productName = script.products?.name || "未知产品";
+    if (!acc[productName]) {
+      acc[productName] = [];
+    }
+    acc[productName].push(script);
+    return acc;
+  }, {} as Record<string, SavedScript[]>);
+  
+  // 计算某个产品某个阶段的话术数量
+  const getStageCount = (productScripts: SavedScript[], stageKey: string) => {
+    const fieldMap: Record<string, string> = {
+      warmUp: 'warm_up',
+      retention: 'retention',
+      lockCustomer: 'lock_customer',
+      pushOrder: 'push_order',
+      atmosphere: 'atmosphere'
+    };
+    return productScripts.filter(script => {
+      const field = fieldMap[stageKey];
+      const value = (script as any)[field];
+      return value && value !== null;
+    }).length;
+  };
+  
+  // 获取某个产品某个阶段的所有话术
+  const getStageScripts = (productScripts: SavedScript[], stageKey: string) => {
+    const fieldMap: Record<string, string> = {
+      warmUp: 'warm_up',
+      retention: 'retention',
+      lockCustomer: 'lock_customer',
+      pushOrder: 'push_order',
+      atmosphere: 'atmosphere'
+    };
+    const field = fieldMap[stageKey];
+    return productScripts.filter(script => {
+      const value = (script as any)[field];
+      return value && value !== null;
+    });
+  };
+  
+  // 切换阶段展开状态
+  const toggleStage = (productName: string, stageKey: string) => {
+    const key = `${productName}-${stageKey}`;
+    setExpandedStages(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+  
+  if (Object.keys(scriptsByProduct).length === 0) {
+    return (
+      <div className="text-center py-8 text-slate-500 text-sm">
+        暂无历史话术，点击上方"生成话术"按钮创建
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      {Object.entries(scriptsByProduct).map(([productName, productScripts]) => (
+        <div key={productName} className="border rounded-xl overflow-hidden bg-white">
+          {/* 产品标题 */}
+          <div className="p-3 bg-gradient-to-r from-slate-800 to-slate-700 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4" />
+                <span className="font-semibold">{productName}</span>
+              </div>
+              <span className="text-xs text-slate-300">
+                共 {productScripts.length} 次生成
+              </span>
+            </div>
+          </div>
+          
+          {/* 5阶段统计 */}
+          <div className="grid grid-cols-5 gap-1 p-2 bg-slate-50">
+            {SCRIPT_SEGMENTS.map((seg) => {
+              const Icon = seg.icon;
+              const count = getStageCount(productScripts, seg.key);
+              const stageKey = `${productName}-${seg.key}`;
+              const isExpanded = expandedStages[stageKey];
+              const stageScripts = getStageScripts(productScripts, seg.key);
+              
+              return (
+                <div key={seg.key} className="text-center">
+                  <button
+                    onClick={() => toggleStage(productName, seg.key)}
+                    className={`w-full p-2 rounded-lg transition-all ${
+                      count > 0 
+                        ? `${seg.bgColor} hover:ring-2 ${seg.borderColor} cursor-pointer`
+                        : 'bg-slate-100 text-slate-400 cursor-default'
+                    }`}
+                    disabled={count === 0}
+                  >
+                    <div className={`w-7 h-7 mx-auto rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center mb-1`}>
+                      <Icon className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <div className={`text-base font-bold ${count > 0 ? seg.textColor : 'text-slate-400'}`}>
+                      {count}
+                    </div>
+                    <div className="text-xs text-slate-500">{seg.label}</div>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* 展开的阶段话术列表 */}
+          {SCRIPT_SEGMENTS.map((seg) => {
+            const stageKey = `${productName}-${seg.key}`;
+            const isExpanded = expandedStages[stageKey];
+            const stageScripts = getStageScripts(productScripts, seg.key);
+            const Icon = seg.icon;
+            
+            if (!isExpanded || stageScripts.length === 0) return null;
+            
+            const fieldMap: Record<string, string> = {
+              warmUp: 'warm_up',
+              retention: 'retention',
+              lockCustomer: 'lock_customer',
+              pushOrder: 'push_order',
+              atmosphere: 'atmosphere'
+            };
+            const field = fieldMap[seg.key];
+            
+            return (
+              <div key={stageKey} className={`border-t ${seg.borderColor} ${seg.bgColor}`}>
+                <div className="p-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={`w-6 h-6 rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center`}>
+                      <Icon className="w-3 h-3 text-white" />
+                    </div>
+                    <span className={`font-semibold ${seg.textColor}`}>
+                      {seg.label}环节 · {stageScripts.length}条话术
+                    </span>
+                    <button
+                      onClick={() => toggleStage(productName, seg.key)}
+                      className="ml-auto text-slate-400 hover:text-slate-600"
+                    >
+                      <ChevronDown className="w-4 h-4 rotate-180" />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {stageScripts.map((script, idx) => {
+                      const stageData = (script as any)[field];
+                      const parsedData = typeof stageData === 'string' ? JSON.parse(stageData) : stageData;
+                      const option = parsedData?.options?.[0];
+                      
+                      return (
+                        <div 
+                          key={script.id}
+                          className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${seg.color} text-white text-xs flex items-center justify-center font-medium`}>
+                                {idx + 1}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {new Date(script.created_at).toLocaleDateString()} {new Date(script.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                onClick={() => {
+                                  if (option?.script) {
+                                    navigator.clipboard.writeText(option.script);
+                                    toast.success("话术已复制");
+                                  }
+                                }}
+                              >
+                                <Copy className="w-3 h-3 mr-1" />
+                                复制
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-slate-400 hover:text-red-500"
+                                onClick={() => onDelete(script.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          {option?.script && (
+                            <p className="text-sm text-slate-700 leading-relaxed">
+                              {option.script}
+                            </p>
+                          )}
+                          {option?.tips && (
+                            <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                              💡 {option.tips}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ScriptsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [templates, setTemplates] = useState<StyleTemplate[]>([]);
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
   const [productList, setProductList] = useState<string[]>([]);
   const [historyProduct, setHistoryProduct] = useState("all");
-  const [historyStage, setHistoryStage] = useState<string>("all"); // 阶段筛选
   const [selectedHistoryScript, setSelectedHistoryScript] = useState<SavedScript | null>(null);
-  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({}); // 展开状态
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -371,10 +601,7 @@ export default function ScriptsPage() {
   // 加载保存的话术
   const loadSavedScripts = useCallback(async () => {
     try {
-      const url = historyProduct && historyProduct !== "all"
-        ? `/api/scripts?category=${encodeURIComponent(historyProduct)}`
-        : "/api/scripts";
-      const response = await fetch(url);
+      const response = await fetch("/api/scripts");
       const data = await response.json();
       if (data.success) {
         setSavedScripts(data.data);
@@ -385,7 +612,7 @@ export default function ScriptsPage() {
     } catch (error) {
       console.error("Load scripts failed:", error);
     }
-  }, [historyProduct]);
+  }, []);
 
   // 产品变化时重新加载
   useEffect(() => {
@@ -1092,32 +1319,21 @@ export default function ScriptsPage() {
           </Card>
         </div>
 
-        {/* 历史话术 - 按阶段总览视图 */}
+        {/* 历史话术 - 按产品→阶段层级展示 */}
         <Card className="mt-4 md:mt-6 shadow-sm">
           <CardHeader className="p-4 md:p-6 pb-2 md:pb-4">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex gap-2">
                   <Select value={historyProduct} onValueChange={setHistoryProduct}>
-                    <SelectTrigger className="w-36 h-8 text-xs">
-                      <SelectValue placeholder="全部产品" />
+                    <SelectTrigger className="w-40 h-8 text-xs">
+                      <SelectValue placeholder="选择产品" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">全部产品</SelectItem>
                       {productList.map((prod) => (
                         <SelectItem key={prod} value={prod}>{prod}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={historyStage} onValueChange={setHistoryStage}>
-                    <SelectTrigger className="w-28 h-8 text-xs">
-                      <SelectValue placeholder="全部阶段" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部阶段</SelectItem>
-                      {SCRIPT_SEGMENTS.map((seg) => (
-                        <SelectItem key={seg.key} value={seg.key}>{seg.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1131,42 +1347,6 @@ export default function ScriptsPage() {
                   </Button>
                 </div>
               </div>
-              
-              {/* 统计概览 */}
-              {savedScripts.length > 0 && (
-                <div className="grid grid-cols-5 gap-2 p-3 bg-slate-50 rounded-lg">
-                  {SCRIPT_SEGMENTS.map((seg) => {
-                    const count = savedScripts.filter(script => {
-                      const fieldMap: Record<string, string> = {
-                        warmUp: 'warm_up',
-                        retention: 'retention',
-                        lockCustomer: 'lock_customer',
-                        pushOrder: 'push_order',
-                        atmosphere: 'atmosphere'
-                      };
-                      const field = fieldMap[seg.key];
-                      const value = (script as any)[field];
-                      return value && value !== null;
-                    }).length;
-                    const Icon = seg.icon;
-                    return (
-                      <div 
-                        key={seg.key} 
-                        className={`text-center p-2 rounded-lg cursor-pointer transition-all ${
-                          historyStage === seg.key ? `ring-2 ${seg.borderColor} bg-white` : 'hover:bg-white'
-                        }`}
-                        onClick={() => setHistoryStage(historyStage === seg.key ? 'all' : seg.key)}
-                      >
-                        <div className={`w-8 h-8 mx-auto rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center mb-1`}>
-                          <Icon className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="text-lg font-bold text-slate-800">{count}</div>
-                        <div className="text-xs text-slate-500">{seg.label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </CardHeader>
           <CardContent className="p-4 md:p-6 pt-0">
@@ -1174,248 +1354,12 @@ export default function ScriptsPage() {
               <div className="text-center py-8 text-slate-500 text-sm">
                 暂无历史话术，点击上方"生成话术"按钮创建
               </div>
-            ) : historyStage === 'all' ? (
-              /* 全部阶段视图 - 按话术记录展示 */
-              <div className="space-y-3 md:space-y-4">
-                {savedScripts.map((script) => {
-                  // 解析话术内容
-                  const warmUp = script.warm_up ? (typeof script.warm_up === 'string' ? JSON.parse(script.warm_up) : script.warm_up) : null;
-                  const retention = script.retention ? (typeof script.retention === 'string' ? JSON.parse(script.retention) : script.retention) : null;
-                  const lockCustomer = script.lock_customer ? (typeof script.lock_customer === 'string' ? JSON.parse(script.lock_customer) : script.lock_customer) : null;
-                  const pushOrder = script.push_order ? (typeof script.push_order === 'string' ? JSON.parse(script.push_order) : script.push_order) : null;
-                  const atmosphere = script.atmosphere ? (typeof script.atmosphere === 'string' ? JSON.parse(script.atmosphere) : script.atmosphere) : null;
-                  
-                  return (
-                    <div 
-                      key={script.id}
-                      className="border rounded-xl overflow-hidden bg-white"
-                    >
-                      {/* 头部信息 */}
-                      <div className="p-3 md:p-4 bg-slate-50 border-b">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm truncate">{script.title}</h4>
-                            <p className="text-xs text-slate-500 mt-1">
-                              {script.products?.name} · {new Date(script.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 text-slate-400 hover:text-red-500"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteScript(script.id);
-                              }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* 话术内容 - 直接展示 */}
-                      <div className="p-3 md:p-4 space-y-3">
-                        {/* 预热 */}
-                        {warmUp?.options?.[0] && (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                <Target className="w-3 h-3 text-white" />
-                              </div>
-                              <span className="font-medium text-sm text-blue-700">预热环节</span>
-                            </div>
-                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
-                              {warmUp.options[0].script}
-                            </p>
-                          </div>
-                        )}
-                        
-                        {/* 留人 */}
-                        {retention?.options?.[0] && (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
-                                <MessageSquare className="w-3 h-3 text-white" />
-                              </div>
-                              <span className="font-medium text-sm text-green-700">留人环节</span>
-                            </div>
-                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
-                              {retention.options[0].script}
-                            </p>
-                          </div>
-                        )}
-                        
-                        {/* 锁客 */}
-                        {lockCustomer?.options?.[0] && (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                                <Lock className="w-3 h-3 text-white" />
-                              </div>
-                              <span className="font-medium text-sm text-purple-700">锁客环节</span>
-                            </div>
-                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
-                              {lockCustomer.options[0].script}
-                            </p>
-                          </div>
-                        )}
-                        
-                        {/* 逼单 */}
-                        {pushOrder?.options?.[0] && (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-                                <Zap className="w-3 h-3 text-white" />
-                              </div>
-                              <span className="font-medium text-sm text-orange-700">逼单环节</span>
-                            </div>
-                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
-                              {pushOrder.options[0].script}
-                            </p>
-                          </div>
-                        )}
-                        
-                        {/* 气氛 */}
-                        {atmosphere?.options?.[0] && (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-pink-600 flex items-center justify-center">
-                                <PartyPopper className="w-3 h-3 text-white" />
-                              </div>
-                              <span className="font-medium text-sm text-pink-700">气氛环节</span>
-                            </div>
-                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
-                              {atmosphere.options[0].script}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* 操作按钮 */}
-                      <div className="px-3 pb-3 md:px-4 md:pb-4">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="w-full h-8 text-xs"
-                          onClick={() => {
-                            // 复制全部话术
-                            const allText = [
-                              warmUp?.options?.[0]?.script,
-                              retention?.options?.[0]?.script,
-                              lockCustomer?.options?.[0]?.script,
-                              pushOrder?.options?.[0]?.script,
-                              atmosphere?.options?.[0]?.script,
-                            ].filter(Boolean).join('\n\n');
-                            navigator.clipboard.writeText(allText);
-                            toast.success("话术已复制到剪贴板");
-                          }}
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          复制全部话术
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             ) : (
-              /* 单阶段视图 - 只显示选中阶段的话术 */
-              (() => {
-                const stageInfo = SCRIPT_SEGMENTS.find(s => s.key === historyStage);
-                if (!stageInfo) return null;
-                const Icon = stageInfo.icon;
-                const fieldMap: Record<string, string> = {
-                  warmUp: 'warm_up',
-                  retention: 'retention',
-                  lockCustomer: 'lock_customer',
-                  pushOrder: 'push_order',
-                  atmosphere: 'atmosphere'
-                };
-                const field = fieldMap[historyStage];
-                
-                // 过滤出有该阶段内容的脚本
-                const scriptsWithStage = savedScripts.filter(script => {
-                  const value = (script as any)[field];
-                  return value && value !== null;
-                });
-                
-                return (
-                  <div className="space-y-3">
-                    <div className={`p-3 rounded-lg ${stageInfo.bgColor} border ${stageInfo.borderColor}`}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${stageInfo.color} flex items-center justify-center`}>
-                          <Icon className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <h3 className={`font-semibold ${stageInfo.textColor}`}>{stageInfo.label}环节话术</h3>
-                          <p className="text-xs text-slate-500">共 {scriptsWithStage.length} 条历史话术</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {scriptsWithStage.length === 0 ? (
-                      <div className="text-center py-6 text-slate-500 text-sm">
-                        暂无{stageInfo.label}环节的历史话术
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {scriptsWithStage.map((script, idx) => {
-                          const stageData = (script as any)[field];
-                          const parsedData = typeof stageData === 'string' ? JSON.parse(stageData) : stageData;
-                          const option = parsedData?.options?.[0];
-                          
-                          return (
-                            <div 
-                              key={script.id}
-                              className={`p-3 rounded-lg border ${stageInfo.borderColor} bg-white`}
-                            >
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className={`w-6 h-6 rounded-full bg-gradient-to-br ${stageInfo.color} text-white text-xs flex items-center justify-center font-medium`}>
-                                    {idx + 1}
-                                  </span>
-                                  <div>
-                                    <span className="text-xs font-medium text-slate-700">{script.products?.name}</span>
-                                    <span className="text-xs text-slate-400 ml-2">
-                                      {new Date(script.created_at).toLocaleDateString()}
-                                    </span>
-                                  </div>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-xs px-2"
-                                  onClick={() => {
-                                    if (option?.script) {
-                                      navigator.clipboard.writeText(option.script);
-                                      toast.success("话术已复制");
-                                    }
-                                  }}
-                                >
-                                  <Copy className="w-3 h-3 mr-1" />
-                                  复制
-                                </Button>
-                              </div>
-                              {option?.script && (
-                                <p className="text-sm text-slate-600 leading-relaxed pl-8">
-                                  {option.script}
-                                </p>
-                              )}
-                              {option?.tips && (
-                                <p className="text-xs text-slate-500 mt-2 pl-8 pt-2 border-t border-slate-100">
-                                  💡 {option.tips}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()
+              <HistoryScriptsByStage 
+                scripts={savedScripts}
+                selectedProduct={historyProduct}
+                onDelete={handleDeleteScript}
+              />
             )}
           </CardContent>
         </Card>
