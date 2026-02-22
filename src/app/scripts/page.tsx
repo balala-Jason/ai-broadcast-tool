@@ -110,6 +110,11 @@ interface SavedScript {
   title: string;
   content: string | null;
   parsed_data: ParsedScriptData | null;
+  warm_up: string | null;
+  retention: string | null;
+  lock_customer: string | null;
+  push_order: string | null;
+  atmosphere: string | null;
   quality_score: number | null;
   compliance_status: string | null;
   created_at: string;
@@ -519,6 +524,9 @@ export default function ScriptsPage() {
                 setGenerationStatus(finalStatus);
                 localStorage.setItem("script_generation_status", JSON.stringify(finalStatus));
                 broadcastChannelRef.current?.postMessage({ type: "GENERATION_STATUS", data: finalStatus });
+                
+                // 生成完成后自动刷新历史话术列表
+                loadSavedScripts();
               } else if (data.type === "error") {
                 console.error("Stream error:", data.message);
                 const errorStatus = {
@@ -563,6 +571,9 @@ export default function ScriptsPage() {
             };
             setGenerationStatus(finalStatus);
             localStorage.setItem("script_generation_status", JSON.stringify(finalStatus));
+            
+            // 刷新历史话术列表
+            loadSavedScripts();
           }
         } catch (parseError) {
           console.error("Failed to parse script data:", parseError);
@@ -580,6 +591,9 @@ export default function ScriptsPage() {
           };
           setGenerationStatus(finalStatus);
           localStorage.setItem("script_generation_status", JSON.stringify(finalStatus));
+          
+          // 刷新历史话术列表
+          loadSavedScripts();
         }
       }
     } catch (error: any) {
@@ -874,22 +888,38 @@ export default function ScriptsPage() {
             </CardContent>
           </Card>
 
-          {/* 右侧：生成结果 */}
+          {/* 右侧：生成结果 - 手机端直接展示全部内容 */}
           <Card className="lg:col-span-2 shadow-sm">
             <CardHeader className="p-4 md:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-base md:text-lg">生成结果</CardTitle>
                   <CardDescription className="text-xs md:text-sm">
-                    5段式话术 · 每环节5+种选择
+                    5段式话术 · 点击复制即可使用
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {parsedData && (
                     <>
-                      <Badge variant="secondary" className="px-2 py-1 text-xs">
-                        已选择 {selectedCount}/5
-                      </Badge>
+                      <Button 
+                        size="sm" 
+                        variant="default" 
+                        onClick={() => {
+                          // 复制全部话术
+                          const allText = SCRIPT_SEGMENTS.map(seg => {
+                            const data = parsedData[seg.key as keyof ParsedScriptData] as ScriptSegment | undefined;
+                            const option = data?.options?.[0];
+                            if (!option) return '';
+                            return `【${seg.label}】\n${option.script}`;
+                          }).filter(Boolean).join('\n\n');
+                          navigator.clipboard.writeText(allText);
+                          toast.success("全部话术已复制");
+                        }} 
+                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        一键复制全部
+                      </Button>
                       <Button size="sm" variant="outline" onClick={handleExport} className="h-8 text-xs">
                         <Download className="w-3 h-3 mr-1" />
                         导出
@@ -901,144 +931,95 @@ export default function ScriptsPage() {
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
               {parsedData ? (
-                <div className="space-y-4">
-                  {/* 5段式指标概览 - 移动端垂直堆叠，桌面端横向排列 */}
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-2 md:gap-2">
-                    {SCRIPT_SEGMENTS.map((seg, index) => {
-                      const Icon = seg.icon;
-                      const data = parsedData[seg.key as keyof ParsedScriptData] as ScriptSegment | undefined;
-                      const optionCount = data?.options?.length || 0;
-                      const isSelected = !!selectedOptions[seg.key];
-                      const isActive = activeSegment === seg.key;
-                      
-                      return (
-                        <button
-                          key={seg.key}
-                          onClick={() => setActiveSegment(seg.key)}
-                          className={`relative p-3 md:p-3 rounded-xl border-2 transition-all text-left md:text-center ${
-                            isActive 
-                              ? `${seg.borderColor} ${seg.bgColor} shadow-md` 
-                              : "border-slate-200 hover:border-slate-300 bg-white"
-                          }`}
-                        >
-                          {/* 移动端：水平布局 */}
-                          <div className="flex md:flex-col items-center gap-3 md:gap-1">
-                            <div className={`flex-shrink-0 w-10 h-10 md:w-10 md:h-10 rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center`}>
-                              <Icon className="w-5 h-5 md:w-5 md:h-5 text-white" />
+                <div className="space-y-3">
+                  {/* 直接展示5段话术 - 无需点击切换 */}
+                  {SCRIPT_SEGMENTS.map((seg, index) => {
+                    const Icon = seg.icon;
+                    const data = parsedData[seg.key as keyof ParsedScriptData] as ScriptSegment | undefined;
+                    if (!data || !data.options?.length) return null;
+                    
+                    // 手机端只显示第一个选项（最佳推荐），桌面端显示全部
+                    const displayOptions = data.options.slice(0, 1);
+                    
+                    return (
+                      <div key={seg.key} className={`rounded-xl border-2 ${seg.borderColor} ${seg.bgColor} overflow-hidden`}>
+                        {/* 标题栏 */}
+                        <div className={`p-3 flex items-center justify-between bg-gradient-to-r ${seg.color} text-white`}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
+                              <Icon className="w-4 h-4" />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center md:justify-center gap-2">
-                                <span className="font-semibold text-sm">{index + 1}. {seg.label}</span>
-                                {isSelected && (
-                                  <CheckCircle2 className="w-4 h-4 text-green-500 md:hidden" />
-                                )}
+                            <div>
+                              <span className="font-semibold text-sm">{index + 1}. {seg.label}</span>
+                              <span className="text-xs text-white/80 ml-2">目标: {seg.target}</span>
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-xs bg-white/20 text-white border-0">
+                            {data.options.length}种可选
+                          </Badge>
+                        </div>
+                        
+                        {/* 话术内容 */}
+                        <div className="p-3 space-y-2">
+                          {displayOptions.map((option, optIndex) => (
+                            <div key={option.id} className="bg-white rounded-lg p-3 shadow-sm">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-xs text-slate-600">{option.style}</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-xs px-2"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(option.script);
+                                    toast.success(`${seg.label}话术已复制`);
+                                  }}
+                                >
+                                  <Copy className="w-3 h-3 mr-1" />
+                                  复制
+                                </Button>
                               </div>
-                              <p className="text-xs text-slate-500 hidden md:block">{optionCount}种选择</p>
-                              <p className="text-xs text-slate-500 md:hidden truncate">{seg.desc}</p>
-                            </div>
-                            <div className="hidden md:block">
-                              {isSelected ? (
-                                <Badge className={`${seg.textColor} ${seg.bgColor} text-xs`}>
-                                  <Check className="w-3 h-3 mr-1" />
-                                  已选
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-xs text-slate-400">
-                                  未选择
-                                </Badge>
+                              <p className="text-sm text-slate-700 leading-relaxed">
+                                {option.script}
+                              </p>
+                              {option.tips && (
+                                <p className="text-xs text-slate-500 mt-2 pt-2 border-t">
+                                  💡 {option.tips}
+                                </p>
                               )}
                             </div>
-                            <ChevronRight className={`w-5 h-5 text-slate-400 md:hidden transition-transform ${isActive ? 'rotate-90' : ''}`} />
-                          </div>
+                          ))}
                           
-                          {/* 桌面端选中标记 */}
-                          {isSelected && (
-                            <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full ${seg.bgColor} border-2 ${seg.borderColor} items-center justify-center hidden md:flex`}>
-                              <Check className="w-3 h-3 text-green-600" />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 当前环节详情 */}
-                  {SCRIPT_SEGMENTS.map((seg) => {
-                    if (activeSegment !== seg.key) return null;
-                    const data = parsedData[seg.key as keyof ParsedScriptData] as ScriptSegment | undefined;
-                    if (!data) return null;
-
-                    return (
-                      <div key={seg.key} className="space-y-3">
-                        <div className={`p-3 md:p-4 rounded-lg ${seg.bgColor} ${seg.borderColor} border`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-sm">{data.title}</span>
-                            <Badge variant="outline" className="text-xs">{data.target}</Badge>
-                          </div>
-                          <p className="text-xs md:text-sm text-slate-600">{data.description}</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3">
-                          {data.options?.map((option, index) => {
-                            const isSelected = selectedOptions[seg.key] === option.id;
-                            
-                            return (
-                              <div
-                                key={option.id}
-                                onClick={() => handleSelectOption(seg.key, option.id)}
-                                className={`relative p-3 md:p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                  isSelected 
-                                    ? `${seg.borderColor} ${seg.bgColor} shadow-md` 
-                                    : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                                }`}
-                              >
-                                <div className="flex items-start gap-2 md:gap-3">
-                                  <div className={`flex-shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-white font-bold text-xs md:text-sm bg-gradient-to-br ${seg.color}`}>
-                                    {index + 1}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium text-sm">{option.style}</span>
-                                      {isSelected && (
-                                        <Badge className={`${seg.textColor} ${seg.bgColor} text-xs`}>
-                                          <Check className="w-3 h-3 mr-1" />
-                                          已选择
-                                        </Badge>
-                                      )}
+                          {/* 更多选项提示 - 桌面端展开全部 */}
+                          <div className="hidden md:block">
+                            {data.options.length > 1 && (
+                              <details className="bg-white rounded-lg">
+                                <summary className="p-2 text-xs text-slate-500 cursor-pointer hover:text-slate-700">
+                                  查看其他 {data.options.length - 1} 种话术选择
+                                </summary>
+                                <div className="p-2 space-y-2">
+                                  {data.options.slice(1).map((option) => (
+                                    <div key={option.id} className="bg-slate-50 rounded-lg p-2">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="font-medium text-xs text-slate-600">{option.style}</span>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-5 text-xs px-2"
+                                          onClick={() => {
+                                            navigator.clipboard.writeText(option.script);
+                                            toast.success("话术已复制");
+                                          }}
+                                        >
+                                          <Copy className="w-3 h-3 mr-1" />
+                                        </Button>
+                                      </div>
+                                      <p className="text-xs text-slate-600 leading-relaxed">{option.script}</p>
                                     </div>
-                                    <p className="text-xs md:text-sm text-slate-700 leading-relaxed line-clamp-2 md:line-clamp-3">
-                                      {option.script}
-                                    </p>
-                                  </div>
+                                  ))}
                                 </div>
-                                <div className="flex gap-2 mt-2 pt-2 border-t">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 text-xs flex-1"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOptionDialog({ open: true, segment: seg.key, option });
-                                    }}
-                                  >
-                                    查看详情
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 text-xs flex-1"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCopyOption(option.script);
-                                    }}
-                                  >
-                                    {copied ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
-                                    复制
-                                  </Button>
-                                </div>
-                              </div>
-                            );
-                          })}
+                              </details>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1046,9 +1027,9 @@ export default function ScriptsPage() {
 
                   {/* 合规提醒 */}
                   {parsedData.complianceNotes && parsedData.complianceNotes.length > 0 && (
-                    <div className="mt-4 md:mt-6 p-3 md:p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <h4 className="font-medium text-amber-800 text-sm mb-2">⚠️ 合规提醒</h4>
-                      <ul className="text-xs md:text-sm text-amber-700 space-y-1">
+                      <ul className="text-xs text-amber-700 space-y-1">
                         {parsedData.complianceNotes.map((note, i) => (
                           <li key={i}>• {note}</li>
                         ))}
@@ -1072,7 +1053,7 @@ export default function ScriptsPage() {
                               <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
                             </span>
                           </div>
-                          <p className="text-amber-600 font-medium">话术正在后台生成中...</p>
+                          <p className="text-amber-600 font-medium">话术正在生成中...</p>
                           <p className="text-xs text-slate-400 mt-2">
                             当前进度: {generationStatus.progress}%
                           </p>
@@ -1083,7 +1064,7 @@ export default function ScriptsPage() {
                             />
                           </div>
                           <p className="text-xs text-slate-400 mt-4">
-                            您可以切换到其他页面，生成完成后会自动显示
+                            生成完成后自动保存到历史记录
                           </p>
                         </div>
                       )}
@@ -1100,7 +1081,7 @@ export default function ScriptsPage() {
                     <div className="text-slate-400 text-center py-8 md:py-12">
                       <Sparkles className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-4 opacity-50" />
                       <p className="text-sm md:text-base">选择产品和风格后点击生成</p>
-                      <p className="text-xs mt-2">每个环节将生成5种以上不同风格的话术</p>
+                      <p className="text-xs mt-2">话术会自动保存到历史记录</p>
                     </div>
                   )}
                 </div>
@@ -1109,9 +1090,9 @@ export default function ScriptsPage() {
           </Card>
         </div>
 
-        {/* 历史话术 */}
+        {/* 历史话术 - 手机端优化：直接展示内容 */}
         <Card className="mt-4 md:mt-6 shadow-sm">
-          <CardHeader className="p-4 md:p-6">
+          <CardHeader className="p-4 md:p-6 pb-2 md:pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
               <div className="flex gap-2">
@@ -1143,55 +1124,154 @@ export default function ScriptsPage() {
                 暂无历史话术
               </div>
             ) : (
-              <div className="space-y-2 md:space-y-3">
-                {savedScripts.map((script) => (
-                  <div 
-                    key={script.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-3 border rounded-lg hover:bg-slate-50 gap-2 cursor-pointer"
-                    onClick={() => handleViewHistoryScript(script)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-sm truncate">{script.title}</h4>
-                        {script.products?.category && (
-                          <Badge variant="outline" className="text-xs flex-shrink-0">
-                            {script.products.category}
-                          </Badge>
+              <div className="space-y-3 md:space-y-4">
+                {savedScripts.map((script) => {
+                  // 解析话术内容
+                  const warmUp = script.warm_up ? (typeof script.warm_up === 'string' ? JSON.parse(script.warm_up) : script.warm_up) : null;
+                  const retention = script.retention ? (typeof script.retention === 'string' ? JSON.parse(script.retention) : script.retention) : null;
+                  const lockCustomer = script.lock_customer ? (typeof script.lock_customer === 'string' ? JSON.parse(script.lock_customer) : script.lock_customer) : null;
+                  const pushOrder = script.push_order ? (typeof script.push_order === 'string' ? JSON.parse(script.push_order) : script.push_order) : null;
+                  const atmosphere = script.atmosphere ? (typeof script.atmosphere === 'string' ? JSON.parse(script.atmosphere) : script.atmosphere) : null;
+                  
+                  return (
+                    <div 
+                      key={script.id}
+                      className="border rounded-xl overflow-hidden bg-white"
+                    >
+                      {/* 头部信息 */}
+                      <div className="p-3 md:p-4 bg-slate-50 border-b">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm truncate">{script.title}</h4>
+                            <p className="text-xs text-slate-500 mt-1">
+                              {script.products?.name} · {new Date(script.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {script.products?.category && (
+                              <Badge variant="outline" className="text-xs flex-shrink-0">
+                                {script.products.category}
+                              </Badge>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-slate-400 hover:text-red-500"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteScript(script.id);
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 话术内容 - 直接展示 */}
+                      <div className="p-3 md:p-4 space-y-3">
+                        {/* 预热 */}
+                        {warmUp?.options?.[0] && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                <Target className="w-3 h-3 text-white" />
+                              </div>
+                              <span className="font-medium text-sm text-blue-700">预热环节</span>
+                            </div>
+                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
+                              {warmUp.options[0].script}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* 留人 */}
+                        {retention?.options?.[0] && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                                <MessageSquare className="w-3 h-3 text-white" />
+                              </div>
+                              <span className="font-medium text-sm text-green-700">留人环节</span>
+                            </div>
+                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
+                              {retention.options[0].script}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* 锁客 */}
+                        {lockCustomer?.options?.[0] && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                                <Lock className="w-3 h-3 text-white" />
+                              </div>
+                              <span className="font-medium text-sm text-purple-700">锁客环节</span>
+                            </div>
+                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
+                              {lockCustomer.options[0].script}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* 逼单 */}
+                        {pushOrder?.options?.[0] && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
+                                <Zap className="w-3 h-3 text-white" />
+                              </div>
+                              <span className="font-medium text-sm text-orange-700">逼单环节</span>
+                            </div>
+                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
+                              {pushOrder.options[0].script}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* 气氛 */}
+                        {atmosphere?.options?.[0] && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-pink-600 flex items-center justify-center">
+                                <PartyPopper className="w-3 h-3 text-white" />
+                              </div>
+                              <span className="font-medium text-sm text-pink-700">气氛环节</span>
+                            </div>
+                            <p className="text-xs text-slate-600 pl-8 leading-relaxed">
+                              {atmosphere.options[0].script}
+                            </p>
+                          </div>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500">
-                        {script.products?.name} | {script.style_templates?.name}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {script.quality_score && (
-                        <Badge variant="secondary" className="text-xs">评分: {script.quality_score}</Badge>
-                      )}
-                      {script.compliance_status && (
-                        <Badge 
-                          variant={script.compliance_status === "pass" ? "default" : "destructive"}
-                          className="text-xs"
+                      
+                      {/* 操作按钮 */}
+                      <div className="px-3 pb-3 md:px-4 md:pb-4">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full h-8 text-xs"
+                          onClick={() => {
+                            // 复制全部话术
+                            const allText = [
+                              warmUp?.options?.[0]?.script,
+                              retention?.options?.[0]?.script,
+                              lockCustomer?.options?.[0]?.script,
+                              pushOrder?.options?.[0]?.script,
+                              atmosphere?.options?.[0]?.script,
+                            ].filter(Boolean).join('\n\n');
+                            navigator.clipboard.writeText(allText);
+                            toast.success("话术已复制到剪贴板");
+                          }}
                         >
-                          {script.compliance_status === "pass" ? "合规" : "待修改"}
-                        </Badge>
-                      )}
-                      <span className="text-xs text-slate-400">
-                        {new Date(script.created_at).toLocaleDateString()}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-slate-400 hover:text-red-500"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteScript(script.id);
-                        }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                          <Copy className="w-3 h-3 mr-1" />
+                          复制全部话术
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
