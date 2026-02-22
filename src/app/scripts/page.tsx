@@ -225,20 +225,26 @@ export default function ScriptsPage() {
   // 页面可见性变化处理 - 确保后台生成继续
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden && abortControllerRef.current) {
-        // 页面重新可见时，检查是否有未完成的生成任务
-        const savedStatus = localStorage.getItem("script_generation_status");
-        if (savedStatus) {
-          const status = JSON.parse(savedStatus);
-          if (status.isGenerating) {
-            setGenerationStatus(status);
-          } else if (status.result) {
-            // 生成已完成，恢复结果
-            setGeneratedContent(status.result.content || "");
-            setParsedData(status.result.parsedData || null);
-            setCurrentScriptId(status.result.scriptId || null);
-            setIsGenerating(false);
-          }
+      const savedStatus = localStorage.getItem("script_generation_status");
+      if (!savedStatus) return;
+      
+      const status = JSON.parse(savedStatus);
+      
+      if (!document.hidden) {
+        // 页面重新可见时，恢复最新状态
+        setGenerationStatus(status);
+        
+        if (status.result) {
+          // 生成已完成，恢复结果
+          setGeneratedContent(status.result.content || "");
+          setParsedData(status.result.parsedData || null);
+          setCurrentScriptId(status.result.scriptId || null);
+          setIsGenerating(false);
+        } else if (status.isGenerating) {
+          // 仍在生成中，显示进度
+          setIsGenerating(true);
+          // 重新启动状态轮询
+          startStatusPolling();
         }
       }
     };
@@ -251,11 +257,44 @@ export default function ScriptsPage() {
     };
   }, []);
 
+  // 状态轮询 - 用于页面切换后恢复状态
+  const statusPollingRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const startStatusPolling = useCallback(() => {
+    // 清除之前的轮询
+    if (statusPollingRef.current) {
+      clearInterval(statusPollingRef.current);
+    }
+    
+    // 每500ms检查一次localStorage中的状态
+    statusPollingRef.current = setInterval(() => {
+      const savedStatus = localStorage.getItem("script_generation_status");
+      if (savedStatus) {
+        const status = JSON.parse(savedStatus);
+        setGenerationStatus(status);
+        
+        if (!status.isGenerating && status.result) {
+          // 生成完成，恢复结果并停止轮询
+          setGeneratedContent(status.result.content || "");
+          setParsedData(status.result.parsedData || null);
+          setCurrentScriptId(status.result.scriptId || null);
+          setIsGenerating(false);
+          
+          if (statusPollingRef.current) {
+            clearInterval(statusPollingRef.current);
+            statusPollingRef.current = null;
+          }
+        }
+      }
+    }, 500);
+  }, []);
+
   // 组件卸载时清理
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      broadcastChannelRef.current?.close();
+      if (statusPollingRef.current) {
+        clearInterval(statusPollingRef.current);
       }
     };
   }, []);
@@ -425,6 +464,11 @@ export default function ScriptsPage() {
     } finally {
       setIsGenerating(false);
       abortControllerRef.current = null;
+      // 停止轮询
+      if (statusPollingRef.current) {
+        clearInterval(statusPollingRef.current);
+        statusPollingRef.current = null;
+      }
     }
   }, [selectedProduct, selectedTemplate, targetAudience, duration]);
 
