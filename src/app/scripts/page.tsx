@@ -39,7 +39,9 @@ import {
   Users,
   TrendingUp,
   DollarSign,
-  ChevronDown
+  ChevronDown,
+  Radio,
+  Play
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 
@@ -185,7 +187,78 @@ export default function ScriptsPage() {
   
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   
+  // 后台生成状态管理
+  const [generationStatus, setGenerationStatus] = useState<{
+    isGenerating: boolean;
+    progress: number;
+    message: string;
+  }>({ isGenerating: false, progress: 0, message: "" });
+  
   const outputRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // 初始化BroadcastChannel用于跨页面通信
+  useEffect(() => {
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      broadcastChannelRef.current = new BroadcastChannel("script_generation");
+      broadcastChannelRef.current.onmessage = (event) => {
+        const { type, data } = event.data;
+        if (type === "GENERATION_STATUS") {
+          setGenerationStatus(data);
+          if (!data.isGenerating && data.result) {
+            // 生成完成，恢复结果
+            setGeneratedContent(data.result.content || "");
+            setParsedData(data.result.parsedData || null);
+            setCurrentScriptId(data.result.scriptId || null);
+            setIsGenerating(false);
+          }
+        }
+      };
+    }
+    
+    return () => {
+      broadcastChannelRef.current?.close();
+    };
+  }, []);
+
+  // 页面可见性变化处理 - 确保后台生成继续
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && abortControllerRef.current) {
+        // 页面重新可见时，检查是否有未完成的生成任务
+        const savedStatus = localStorage.getItem("script_generation_status");
+        if (savedStatus) {
+          const status = JSON.parse(savedStatus);
+          if (status.isGenerating) {
+            setGenerationStatus(status);
+          } else if (status.result) {
+            // 生成已完成，恢复结果
+            setGeneratedContent(status.result.content || "");
+            setParsedData(status.result.parsedData || null);
+            setCurrentScriptId(status.result.scriptId || null);
+            setIsGenerating(false);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    handleVisibilityChange(); // 初始检查
+    
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -226,6 +299,21 @@ export default function ScriptsPage() {
     setParsedData(null);
     setCurrentScriptId(null);
     setSelectedOptions({});
+    
+    const status = {
+      isGenerating: true,
+      progress: 0,
+      message: "正在初始化...",
+      result: null as any,
+      timestamp: Date.now(),
+    };
+    
+    setGenerationStatus(status);
+    localStorage.setItem("script_generation_status", JSON.stringify(status));
+    broadcastChannelRef.current?.postMessage({ type: "GENERATION_STATUS", data: status });
+
+    // 创建新的AbortController
+    abortControllerRef.current = new AbortController();
 
     try {
       const response = await fetch("/api/scripts/generate", {
@@ -237,6 +325,7 @@ export default function ScriptsPage() {
           targetAudience,
           duration: parseInt(duration),
         }),
+        signal: abortControllerRef.current.signal,
       });
 
       const reader = response.body?.getReader();
@@ -245,6 +334,10 @@ export default function ScriptsPage() {
       if (!reader) {
         throw new Error("无法读取响应流");
       }
+
+      let fullContent = "";
+      let lastParsedData: ParsedScriptData | null = null;
+      let lastScriptId: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -259,14 +352,52 @@ export default function ScriptsPage() {
               const data = JSON.parse(line.slice(6));
               
               if (data.type === "chunk") {
+                fullContent += data.content;
                 setGeneratedContent((prev) => prev + data.content);
+                
+                // 更新进度状态
+                const progress = Math.min(95, (fullContent.length / 2000) * 100);
+                const newStatus = {
+                  ...status,
+                  progress,
+                  message: `正在生成话术... ${Math.round(progress)}%`,
+                };
+                setGenerationStatus(newStatus);
+                localStorage.setItem("script_generation_status", JSON.stringify(newStatus));
               } else if (data.type === "done") {
+                lastScriptId = data.scriptId;
+                lastParsedData = data.scriptData || null;
                 setCurrentScriptId(data.scriptId);
                 if (data.scriptData) {
                   setParsedData(data.scriptData);
                 }
+                
+                // 保存完成状态
+                const finalStatus = {
+                  isGenerating: false,
+                  progress: 100,
+                  message: "生成完成",
+                  result: {
+                    content: fullContent,
+                    parsedData: data.scriptData,
+                    scriptId: data.scriptId,
+                  },
+                  timestamp: Date.now(),
+                };
+                setGenerationStatus(finalStatus);
+                localStorage.setItem("script_generation_status", JSON.stringify(finalStatus));
+                broadcastChannelRef.current?.postMessage({ type: "GENERATION_STATUS", data: finalStatus });
               } else if (data.type === "error") {
                 console.error("Stream error:", data.message);
+                const errorStatus = {
+                  isGenerating: false,
+                  progress: 0,
+                  message: `生成失败: ${data.message}`,
+                  result: null,
+                  timestamp: Date.now(),
+                };
+                setGenerationStatus(errorStatus);
+                localStorage.setItem("script_generation_status", JSON.stringify(errorStatus));
               }
             } catch {
               // 忽略解析错误
@@ -274,11 +405,26 @@ export default function ScriptsPage() {
           }
         }
       }
-    } catch (error) {
-      console.error("Generate failed:", error);
-      alert("生成失败，请重试");
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        console.log("生成被中断");
+      } else {
+        console.error("Generate failed:", error);
+        alert("生成失败，请重试");
+        
+        const errorStatus = {
+          isGenerating: false,
+          progress: 0,
+          message: "生成失败",
+          result: null,
+          timestamp: Date.now(),
+        };
+        setGenerationStatus(errorStatus);
+        localStorage.setItem("script_generation_status", JSON.stringify(errorStatus));
+      }
     } finally {
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   }, [selectedProduct, selectedTemplate, targetAudience, duration]);
 
@@ -416,14 +562,28 @@ export default function ScriptsPage() {
               </div>
 
               <Button 
-                className="w-full h-11" 
+                className="w-full h-11 relative overflow-hidden" 
                 onClick={handleGenerate}
                 disabled={isGenerating || !selectedProduct || !selectedTemplate}
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    生成中...
+                    <span className="relative z-10">
+                      {generationStatus.message || "生成中..."}
+                    </span>
+                    {/* 进度条背景 */}
+                    <div 
+                      className="absolute left-0 top-0 bottom-0 bg-emerald-500/30 transition-all duration-300"
+                      style={{ width: `${generationStatus.progress}%` }}
+                    />
+                  </>
+                ) : generationStatus.isGenerating ? (
+                  <>
+                    <Radio className="w-4 h-4 mr-2 text-amber-500 animate-pulse" />
+                    <span className="relative z-10 text-amber-600">
+                      后台生成中 {generationStatus.progress}%
+                    </span>
                   </>
                 ) : (
                   <>
@@ -432,6 +592,25 @@ export default function ScriptsPage() {
                   </>
                 )}
               </Button>
+              
+              {/* 后台生成状态提示 */}
+              {generationStatus.isGenerating && !isGenerating && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-amber-700 text-sm">
+                    <Radio className="w-4 h-4 animate-pulse" />
+                    <span>话术正在后台生成中...</span>
+                  </div>
+                  <p className="text-xs text-amber-600 mt-1">
+                    您可以切换到其他页面，生成完成后会自动保存
+                  </p>
+                  <div className="mt-2 h-1.5 bg-amber-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-amber-500 transition-all duration-500"
+                      style={{ width: `${generationStatus.progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -463,36 +642,61 @@ export default function ScriptsPage() {
             <CardContent className="p-4 md:p-6 pt-0">
               {parsedData ? (
                 <div className="space-y-4">
-                  {/* 5段式指标概览 - 移动端滚动 */}
-                  <div className="flex overflow-x-auto gap-2 pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-5 md:gap-2">
-                    {SCRIPT_SEGMENTS.map((seg) => {
+                  {/* 5段式指标概览 - 移动端垂直堆叠，桌面端横向排列 */}
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-2 md:gap-2">
+                    {SCRIPT_SEGMENTS.map((seg, index) => {
                       const Icon = seg.icon;
                       const data = parsedData[seg.key as keyof ParsedScriptData] as ScriptSegment | undefined;
                       const optionCount = data?.options?.length || 0;
                       const isSelected = !!selectedOptions[seg.key];
+                      const isActive = activeSegment === seg.key;
                       
                       return (
                         <button
                           key={seg.key}
                           onClick={() => setActiveSegment(seg.key)}
-                          className={`relative flex-shrink-0 w-16 md:w-auto p-2 md:p-3 rounded-xl border-2 transition-all ${
-                            activeSegment === seg.key 
+                          className={`relative p-3 md:p-3 rounded-xl border-2 transition-all text-left md:text-center ${
+                            isActive 
                               ? `${seg.borderColor} ${seg.bgColor} shadow-md` 
-                              : "border-slate-200 hover:border-slate-300"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
                           }`}
                         >
-                          <div className="flex flex-col items-center gap-1">
-                            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center`}>
-                              <Icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                          {/* 移动端：水平布局 */}
+                          <div className="flex md:flex-col items-center gap-3 md:gap-1">
+                            <div className={`flex-shrink-0 w-10 h-10 md:w-10 md:h-10 rounded-full bg-gradient-to-br ${seg.color} flex items-center justify-center`}>
+                              <Icon className="w-5 h-5 md:w-5 md:h-5 text-white" />
                             </div>
-                            <span className="text-xs font-medium">{seg.label}</span>
-                            <span className="text-xs text-slate-500 hidden md:block">{optionCount}种</span>
-                            {isSelected && (
-                              <div className={`absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 rounded-full ${seg.bgColor} border-2 ${seg.borderColor} flex items-center justify-center`}>
-                                <Check className="w-2 h-2 md:w-3 md:h-3 text-green-600" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center md:justify-center gap-2">
+                                <span className="font-semibold text-sm">{index + 1}. {seg.label}</span>
+                                {isSelected && (
+                                  <CheckCircle2 className="w-4 h-4 text-green-500 md:hidden" />
+                                )}
                               </div>
-                            )}
+                              <p className="text-xs text-slate-500 hidden md:block">{optionCount}种选择</p>
+                              <p className="text-xs text-slate-500 md:hidden truncate">{seg.desc}</p>
+                            </div>
+                            <div className="hidden md:block">
+                              {isSelected ? (
+                                <Badge className={`${seg.textColor} ${seg.bgColor} text-xs`}>
+                                  <Check className="w-3 h-3 mr-1" />
+                                  已选
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs text-slate-400">
+                                  未选择
+                                </Badge>
+                              )}
+                            </div>
+                            <ChevronRight className={`w-5 h-5 text-slate-400 md:hidden transition-transform ${isActive ? 'rotate-90' : ''}`} />
                           </div>
+                          
+                          {/* 桌面端选中标记 */}
+                          {isSelected && (
+                            <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full ${seg.bgColor} border-2 ${seg.borderColor} items-center justify-center hidden md:flex`}>
+                              <Check className="w-3 h-3 text-green-600" />
+                            </div>
+                          )}
                         </button>
                       );
                     })}
@@ -597,15 +801,47 @@ export default function ScriptsPage() {
                   ref={outputRef}
                   className="min-h-[300px] md:min-h-[400px] max-h-[500px] md:max-h-[600px] overflow-y-auto bg-slate-50 rounded-lg p-3 md:p-4 font-mono text-xs md:text-sm whitespace-pre-wrap"
                 >
-                  {generatedContent || (
+                  {generatedContent || generationStatus.isGenerating ? (
+                    <>
+                      {generationStatus.isGenerating && !generatedContent && (
+                        <div className="text-center py-8 md:py-12">
+                          <div className="relative inline-block">
+                            <Radio className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-4 text-amber-500 animate-pulse" />
+                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                            </span>
+                          </div>
+                          <p className="text-amber-600 font-medium">话术正在后台生成中...</p>
+                          <p className="text-xs text-slate-400 mt-2">
+                            当前进度: {generationStatus.progress}%
+                          </p>
+                          <div className="mt-4 mx-auto w-48 h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-amber-500 transition-all duration-500"
+                              style={{ width: `${generationStatus.progress}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-slate-400 mt-4">
+                            您可以切换到其他页面，生成完成后会自动显示
+                          </p>
+                        </div>
+                      )}
+                      {generatedContent && (
+                        <div className="text-slate-700">
+                          {generatedContent}
+                          {isGenerating && (
+                            <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse ml-1" />
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
                     <div className="text-slate-400 text-center py-8 md:py-12">
                       <Sparkles className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-4 opacity-50" />
                       <p className="text-sm md:text-base">选择产品和风格后点击生成</p>
                       <p className="text-xs mt-2">每个环节将生成5种以上不同风格的话术</p>
                     </div>
-                  )}
-                  {isGenerating && (
-                    <span className="inline-block w-2 h-4 bg-emerald-500 animate-pulse ml-1" />
                   )}
                 </div>
               )}
