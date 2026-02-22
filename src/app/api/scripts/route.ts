@@ -14,16 +14,17 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const pageSize = parseInt(searchParams.get("pageSize") || "20");
 
-    // 先获取产品ID列表（如果按品类筛选）
+    // 先获取产品ID列表（如果按产品名称筛选）
     let productIds: string[] | null = null;
     if (category) {
-      const { data: productsByCategory } = await client
+      // category参数现在表示产品名称
+      const { data: productsByName } = await client
         .from("products")
         .select("id")
-        .eq("category", category);
-      productIds = (productsByCategory || []).map(p => p.id);
+        .eq("name", category);
+      productIds = (productsByName || []).map(p => p.id);
       
-      // 如果没有该品类的产品，直接返回空结果
+      // 如果没有该产品，直接返回空结果
       if (productIds.length === 0) {
         return NextResponse.json({
           success: true,
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
           total: 0,
           page,
           pageSize,
-          categories: [],
+          products: [],
         });
       }
     }
@@ -57,12 +58,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 获取所有产品的品类列表（用于筛选）
+    // 获取所有产品的名称列表（用于按产品名称筛选）
     const { data: allProducts } = await client
       .from("products")
       .select("id, name, category");
     
-    const categories = [...new Set((allProducts || []).map(p => p.category).filter(Boolean))];
+    // 按产品名称分类（不是品类）
+    const productNames = [...new Set((allProducts || []).map(p => p.name).filter(Boolean))];
 
     // 单独获取产品和模板信息
     let enrichedData = data || [];
@@ -91,7 +93,7 @@ export async function GET(request: NextRequest) {
       total: count || 0,
       page,
       pageSize,
-      categories, // 返回品类列表
+      products: productNames, // 返回产品名称列表（用于筛选）
     });
   } catch (error) {
     console.error("Get scripts error:", error);

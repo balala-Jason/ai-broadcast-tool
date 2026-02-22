@@ -191,6 +191,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "风格模板不存在" }, { status: 404 });
     }
 
+    // 创建初始话术记录（生成中状态）
+    const initialScriptRecord = {
+      product_id: productId,
+      style_template_id: styleTemplateId,
+      title: title || `${product.name} - ${styleTemplate.name}话术`,
+      target_audience: targetAudience,
+      duration: duration || 30,
+      promotion_rules: promotionRules ? JSON.stringify(promotionRules) : null,
+      status: "generating" as const,
+    };
+
+    const { data: initialScript, error: initialError } = await client
+      .from("scripts")
+      .insert(initialScriptRecord)
+      .select()
+      .single();
+
+    if (initialError) {
+      console.error("Create initial script error:", initialError);
+      return NextResponse.json({ error: "创建话术记录失败" }, { status: 500 });
+    }
+
     // 从知识库检索相关素材
     let referenceMaterials = "";
     try {
@@ -294,14 +316,8 @@ export async function POST(request: NextRequest) {
             scriptData = { rawContent: fullContent };
           }
 
-          // 保存话术到数据库（抖音实战5段式结构）
-          const scriptRecord = {
-            product_id: productId,
-            style_template_id: styleTemplateId,
-            title: title || `${product.name} - ${styleTemplate.name}话术`,
-            target_audience: targetAudience,
-            duration: duration || 30,
-            promotion_rules: promotionRules ? JSON.stringify(promotionRules) : null,
+          // 更新话术到数据库（抖音实战5段式结构）
+          const scriptUpdate = {
             // 抖音实战5段式
             warm_up: scriptData?.warmUp ? JSON.stringify(scriptData.warmUp) : null,
             retention: scriptData?.retention ? JSON.stringify(scriptData.retention) : null,
@@ -313,7 +329,8 @@ export async function POST(request: NextRequest) {
 
           const { data: savedScript, error: saveError } = await client
             .from("scripts")
-            .insert(scriptRecord)
+            .update(scriptUpdate)
+            .eq("id", initialScript.id)
             .select()
             .single();
 
@@ -333,6 +350,13 @@ export async function POST(request: NextRequest) {
           safeClose();
         } catch (streamError) {
           console.error("Stream error:", streamError);
+          
+          // 更新话术状态为失败
+          await client
+            .from("scripts")
+            .update({ status: "failed" })
+            .eq("id", initialScript.id);
+          
           safeEnqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "error", message: String(streamError) })}\n\n`)
           );

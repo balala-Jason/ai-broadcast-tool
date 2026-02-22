@@ -187,8 +187,8 @@ export default function ScriptsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [templates, setTemplates] = useState<StyleTemplate[]>([]);
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [historyCategory, setHistoryCategory] = useState("all");
+  const [productList, setProductList] = useState<string[]>([]);
+  const [historyProduct, setHistoryProduct] = useState("all");
   const [selectedHistoryScript, setSelectedHistoryScript] = useState<SavedScript | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -369,23 +369,23 @@ export default function ScriptsPage() {
   // 加载保存的话术
   const loadSavedScripts = useCallback(async () => {
     try {
-      const url = historyCategory && historyCategory !== "all"
-        ? `/api/scripts?category=${encodeURIComponent(historyCategory)}`
+      const url = historyProduct && historyProduct !== "all"
+        ? `/api/scripts?category=${encodeURIComponent(historyProduct)}`
         : "/api/scripts";
       const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
         setSavedScripts(data.data);
-        if (data.categories) {
-          setCategories(data.categories);
+        if (data.products) {
+          setProductList(data.products);
         }
       }
     } catch (error) {
       console.error("Load scripts failed:", error);
     }
-  }, [historyCategory]);
+  }, [historyProduct]);
 
-  // 品类变化时重新加载
+  // 产品变化时重新加载
   useEffect(() => {
     loadSavedScripts();
   }, [loadSavedScripts]);
@@ -409,8 +409,8 @@ export default function ScriptsPage() {
         if (templatesData.success) setTemplates(templatesData.data);
         if (scriptsData.success) {
           setSavedScripts(scriptsData.data);
-          if (scriptsData.categories) {
-            setCategories(scriptsData.categories);
+          if (scriptsData.products) {
+            setProductList(scriptsData.products);
           }
         }
       } catch (error) {
@@ -1096,14 +1096,14 @@ export default function ScriptsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <CardTitle className="text-base md:text-lg">历史话术</CardTitle>
               <div className="flex gap-2">
-                <Select value={historyCategory} onValueChange={setHistoryCategory}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue placeholder="全部品类" />
+                <Select value={historyProduct} onValueChange={setHistoryProduct}>
+                  <SelectTrigger className="w-40 h-8 text-xs">
+                    <SelectValue placeholder="全部产品" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部品类</SelectItem>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    <SelectItem value="all">全部产品</SelectItem>
+                    {productList.map((prod) => (
+                      <SelectItem key={prod} value={prod}>{prod}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1121,7 +1121,7 @@ export default function ScriptsPage() {
           <CardContent className="p-4 md:p-6 pt-0">
             {savedScripts.length === 0 ? (
               <div className="text-center py-8 text-slate-500 text-sm">
-                暂无历史话术
+                暂无历史话术，点击上方"生成话术"按钮创建
               </div>
             ) : (
               <div className="space-y-3 md:space-y-4">
