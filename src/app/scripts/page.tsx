@@ -220,8 +220,8 @@ function HistoryScriptsByStage({
       pushOrder: 'push_order',
       atmosphere: 'atmosphere'
     };
+    const field = fieldMap[stageKey];
     return productScripts.filter(script => {
-      const field = fieldMap[stageKey];
       const value = (script as any)[field];
       return value && value !== null;
     }).length;
