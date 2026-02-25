@@ -44,7 +44,8 @@ import {
   Play,
   Trash2,
   Eye,
-  Package
+  Package,
+  Calendar
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -328,6 +329,14 @@ function HistoryScriptsByStage({
             };
             const field = fieldMap[seg.key];
             
+            // 计算总选项数（所有话术的options总和）
+            let totalOptions = 0;
+            stageScripts.forEach(script => {
+              const stageData = (script as any)[field];
+              const parsedData = typeof stageData === 'string' ? JSON.parse(stageData) : stageData;
+              totalOptions += parsedData?.options?.length || 0;
+            });
+            
             return (
               <div key={stageKey} className={`border-t ${seg.borderColor} ${seg.bgColor}`}>
                 <div className="p-3">
@@ -336,7 +345,7 @@ function HistoryScriptsByStage({
                       <Icon className="w-3 h-3 text-white" />
                     </div>
                     <span className={`font-semibold ${seg.textColor}`}>
-                      {seg.label}环节 · {stageScripts.length}条话术
+                      {seg.label}环节 · 共{totalOptions}条话术选项
                     </span>
                     <button
                       onClick={() => toggleStage(productName, seg.key)}
@@ -346,41 +355,26 @@ function HistoryScriptsByStage({
                     </button>
                   </div>
                   
-                  <div className="space-y-2">
-                    {stageScripts.map((script, idx) => {
+                  {/* 展示每条话术记录的所有选项 */}
+                  <div className="space-y-3">
+                    {stageScripts.map((script) => {
                       const stageData = (script as any)[field];
                       const parsedData = typeof stageData === 'string' ? JSON.parse(stageData) : stageData;
-                      const option = parsedData?.options?.[0];
+                      const options = parsedData?.options || [];
                       
                       return (
-                        <div 
-                          key={script.id}
-                          className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${seg.color} text-white text-xs flex items-center justify-center font-medium`}>
-                                {idx + 1}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                {new Date(script.created_at).toLocaleDateString()} {new Date(script.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-xs px-2"
-                                onClick={() => {
-                                  if (option?.script) {
-                                    navigator.clipboard.writeText(option.script);
-                                    toast.success("话术已复制");
-                                  }
-                                }}
-                              >
-                                <Copy className="w-3 h-3 mr-1" />
-                                复制
-                              </Button>
+                        <div key={script.id} className="space-y-2">
+                          {/* 话术批次标题 */}
+                          <div className="flex items-center gap-2 px-2 py-1 bg-white/50 rounded border border-slate-200">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            <span className="text-xs text-slate-500">
+                              {new Date(script.created_at).toLocaleDateString()} {new Date(script.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className="text-xs text-slate-400">·</span>
+                            <span className="text-xs text-slate-600 font-medium">
+                              {options.length}条选项
+                            </span>
+                            <div className="ml-auto">
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -391,16 +385,53 @@ function HistoryScriptsByStage({
                               </Button>
                             </div>
                           </div>
-                          {option?.script && (
-                            <p className="text-sm text-slate-700 leading-relaxed">
-                              {option.script}
-                            </p>
-                          )}
-                          {option?.tips && (
-                            <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
-                              💡 {option.tips}
-                            </p>
-                          )}
+                          
+                          {/* 该批次的所有选项 */}
+                          <div className="space-y-2 pl-2">
+                            {options.map((option: any, optIdx: number) => (
+                              <div 
+                                key={`${script.id}-${optIdx}`}
+                                className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm hover:shadow-md transition-shadow"
+                              >
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${seg.color} text-white text-xs flex items-center justify-center font-medium`}>
+                                      {optIdx + 1}
+                                    </span>
+                                    {option?.style && (
+                                      <span className={`text-xs px-2 py-0.5 rounded-full ${seg.bgColor} ${seg.textColor} font-medium`}>
+                                        {option.style}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-xs px-2"
+                                    onClick={() => {
+                                      if (option?.script) {
+                                        navigator.clipboard.writeText(option.script);
+                                        toast.success("话术已复制");
+                                      }
+                                    }}
+                                  >
+                                    <Copy className="w-3 h-3 mr-1" />
+                                    复制
+                                  </Button>
+                                </div>
+                                {option?.script && (
+                                  <p className="text-sm text-slate-700 leading-relaxed">
+                                    {option.script}
+                                  </p>
+                                )}
+                                {option?.tips && (
+                                  <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                                    💡 {option.tips}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       );
                     })}
